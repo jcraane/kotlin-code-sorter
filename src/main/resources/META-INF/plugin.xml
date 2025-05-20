@@ -5,6 +5,7 @@
     <vendor>jcraane</vendor>
 
     <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.kotlin</depends>
 
     <resource-bundle>messages.MyBundle</resource-bundle>
 
@@ -12,4 +13,15 @@
         <toolWindow factoryClass="com.github.jcraane.kotlincodesorter.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
         <postStartupActivity implementation="com.github.jcraane.kotlincodesorter.startup.MyProjectActivity" />
     </extensions>
+
+    <actions>
+        <action id="KotlinCodeSorter.SortFile"
+                class="com.github.jcraane.kotlincodesorter.actions.SortKotlinFileAction"
+                text="Sort Kotlin File"
+                description="Sort Kotlin file according to the specified rules">
+            <add-to-group group-id="CodeMenu" anchor="last"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="alt shift K"/>
+        </action>
+    </actions>
 </idea-plugin>
