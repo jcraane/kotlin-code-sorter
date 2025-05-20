@@ -2,84 +2,127 @@ package com.github.jcraane.kotlincodesorter.services
 
 import com.github.jcraane.kotlincodesorter.model.KotlinElement
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import com.intellij.psi.util.PsiTreeUtil
+import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.psi.KtClass
+import org.jetbrains.kotlin.psi.KtClassBody
+import org.jetbrains.kotlin.psi.KtClassInitializer
+import org.jetbrains.kotlin.psi.KtClassOrObject
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtFunction
+import org.jetbrains.kotlin.psi.KtObjectDeclaration
+import org.jetbrains.kotlin.psi.KtProperty
+import org.jetbrains.kotlin.psi.psiUtil.findDescendantOfType
 
 /**
- * Service for parsing Kotlin files and extracting elements that can be sorted.
+ * Service for parsing Kotlin files into KotlinElement objects.
  */
 class KotlinElementParser {
     private val log = logger<KotlinElementParser>()
 
     /**
-     * Parses a Kotlin file and extracts all sortable elements.
+     * Parses a Kotlin file and extracts all elements.
      *
      * @param file The Kotlin file to parse
-     * @return A list of KotlinElement objects representing the sortable elements in the file
+     * @return A list of KotlinElement objects
      */
     fun parse(file: PsiFile): List<KotlinElement> {
+        if (file !is KtFile) {
+            log.warn("Not a Kotlin file: ${file.name}")
+            return emptyList()
+        }
+
+        return parseElements(file)
+    }
+
+    /**
+     * Parses a Kotlin class and extracts all elements within it.
+     *
+     * @param ktClass The Kotlin class to parse
+     * @return A list of KotlinElement objects
+     */
+    fun parse(ktClass: KtClass): List<KotlinElement> {
+        return parseElementsInClass(ktClass)
+    }
+
+    /**
+     * Parses all elements in a Kotlin file.
+     *
+     * @param file The Kotlin file
+     * @return A list of KotlinElement objects
+     */
+    private fun parseElements(file: KtFile): List<KotlinElement> {
         val elements = mutableListOf<KotlinElement>()
 
-        // For the initial implementation, we'll return an empty list
-        // This will be expanded once we have access to Kotlin PSI classes
-        log.info("Parsing file: ${file.name}")
+        // Parse top-level elements
+        file.declarations.forEach { declaration ->
+            when (declaration) {
+                is KtProperty -> elements.add(parseProperty(declaration))
+                is KtFunction -> elements.add(parseFunction(declaration))
+                is KtClass -> elements.add(parseClass(declaration))
+                is KtObjectDeclaration -> {
+                    if (declaration.isCompanion()) {
+                        elements.add(parseCompanionObject(declaration))
+                    } else {
+                        elements.add(parseClass(declaration))
+                    }
+                }
+                // Add other top-level element types as needed
+            }
+        }
 
         return elements
     }
 
     /**
-     * Determines if a PsiElement is a property.
+     * Parses all elements in a Kotlin class.
+     *
+     * @param ktClass The Kotlin class
+     * @return A list of KotlinElement objects
      */
-    private fun isProperty(element: PsiElement): Boolean {
-        return element.javaClass.simpleName.contains("Property")
+    private fun parseElementsInClass(ktClass: KtClass): List<KotlinElement> {
+        val elements = mutableListOf<KotlinElement>()
+        val body = ktClass.findDescendantOfType<KtClassBody>() ?: return elements
+
+        // Parse declarations in the class body
+        body.declarations.forEach { declaration ->
+            when (declaration) {
+                is KtProperty -> elements.add(parseProperty(declaration))
+                is KtFunction -> elements.add(parseFunction(declaration))
+                is KtClass -> elements.add(parseClass(declaration))
+                is KtObjectDeclaration -> {
+                    if (declaration.isCompanion()) {
+                        elements.add(parseCompanionObject(declaration))
+                    } else {
+                        elements.add(parseClass(declaration))
+                    }
+                }
+
+                is KtClassInitializer -> elements.add(parseInitBlock(declaration))
+                // Add other class member types as needed
+            }
+        }
+
+        return elements
     }
 
     /**
-     * Determines if a PsiElement is a function.
+     * Parses a Kotlin property.
+     *
+     * @param property The Kotlin property
+     * @return A KotlinElement.Property object
      */
-    private fun isFunction(element: PsiElement): Boolean {
-        return element.javaClass.simpleName.contains("Function")
-    }
-
-    /**
-     * Determines if a PsiElement is a companion object.
-     */
-    private fun isCompanionObject(element: PsiElement): Boolean {
-        return element.javaClass.simpleName.contains("Object") &&
-               element.text.contains("companion")
-    }
-
-    /**
-     * Determines if a PsiElement is an init block.
-     */
-    private fun isInitBlock(element: PsiElement): Boolean {
-        return element.javaClass.simpleName.contains("Initializer") ||
-               element.text.startsWith("init")
-    }
-
-    /**
-     * Determines if a PsiElement is a class declaration.
-     */
-    private fun isClass(element: PsiElement): Boolean {
-        return element.javaClass.simpleName.contains("Class")
-    }
-
-    /**
-     * Creates a Property element from a PsiElement.
-     */
-    private fun createPropertyElement(property: PsiElement): KotlinElement.Property {
-        val name = property.text.substringAfter("val ").substringAfter("var ").substringBefore(":")
-        val isViewModelProperty = name.endsWith("ViewModel") ||
-                                  property.text.contains("ViewModel")
+    private fun parseProperty(property: KtProperty): KotlinElement.Property {
+        val isPrivate = property.hasModifier(KtTokens.PRIVATE_KEYWORD)
+        val isPublic = !isPrivate && !property.hasModifier(KtTokens.PROTECTED_KEYWORD)
+        val isAbstract = property.hasModifier(KtTokens.ABSTRACT_KEYWORD)
+        val isViewModelProperty = property.name?.endsWith("ViewModel") == true
 
         return KotlinElement.Property(
-            name = name.trim(),
-            isPublic = !property.text.contains("private") && !property.text.contains("protected"),
-            isPrivate = property.text.contains("private"),
-            isProtected = property.text.contains("protected"),
-            isAbstract = property.text.contains("abstract"),
-            isOverride = property.text.contains("override"),
+            name = property.name ?: "",
+            isPrivate = isPrivate,
+            isPublic = isPublic,
+            isAbstract = isAbstract,
             isViewModelProperty = isViewModelProperty,
             startOffset = property.textRange.startOffset,
             endOffset = property.textRange.endOffset
@@ -87,21 +130,33 @@ class KotlinElementParser {
     }
 
     /**
-     * Creates a Function element from a PsiElement.
+     * Parses a Kotlin function.
+     *
+     * @param function The Kotlin function
+     * @return A KotlinElement.Function object
      */
-    private fun createFunctionElement(function: PsiElement): KotlinElement.Function {
-        val text = function.text
-        val name = text.substringAfter("fun ").substringBefore("(")
-        val isComposable = text.contains("@Composable")
-        val isContentView = name.trim() == "ContentView" && isComposable
+    private fun parseFunction(function: KtFunction): KotlinElement.Function {
+        val isPrivate = function.hasModifier(KtTokens.PRIVATE_KEYWORD)
+        val isPublic = !isPrivate && !function.hasModifier(KtTokens.PROTECTED_KEYWORD)
+        val isProtected = function.hasModifier(KtTokens.PROTECTED_KEYWORD)
+        val isAbstract = function.hasModifier(KtTokens.ABSTRACT_KEYWORD)
+        val isOverride = function.hasModifier(KtTokens.OVERRIDE_KEYWORD)
+
+        // Check for Composable annotation
+        val isComposable = function.annotationEntries.any {
+            it.shortName?.asString() == "Composable"
+        }
+
+        // Check if it's a ContentView function
+        val isContentView = function.name == "ContentView" && isComposable
 
         return KotlinElement.Function(
-            name = name.trim(),
-            isPublic = !text.contains("private") && !text.contains("protected"),
-            isPrivate = text.contains("private"),
-            isProtected = text.contains("protected"),
-            isAbstract = text.contains("abstract"),
-            isOverride = text.contains("override"),
+            name = function.name ?: "",
+            isPrivate = isPrivate,
+            isPublic = isPublic,
+            isProtected = isProtected,
+            isAbstract = isAbstract,
+            isOverride = isOverride,
             isComposable = isComposable,
             isContentView = isContentView,
             startOffset = function.textRange.startOffset,
@@ -110,42 +165,50 @@ class KotlinElementParser {
     }
 
     /**
-     * Creates a CompanionObject element from a PsiElement.
+     * Parses a Kotlin class.
+     *
+     * @param clazz The Kotlin class
+     * @return A KotlinElement.ClassDeclaration object
      */
-    private fun createCompanionObjectElement(companionObject: PsiElement): KotlinElement.CompanionObject {
+    private fun parseClass(clazz: KtClassOrObject): KotlinElement.ClassDeclaration {
+        val isDataClass = clazz is KtClass && clazz.isData()
+        val isSealedClass = clazz is KtClass && clazz.isSealed()
+        val isInnerClass = clazz.hasModifier(KtTokens.INNER_KEYWORD)
+
+        return KotlinElement.ClassDeclaration(
+            name = clazz.name ?: "",
+            isDataClass = isDataClass,
+            isSealedClass = isSealedClass,
+            isInnerClass = isInnerClass,
+            startOffset = clazz.textRange.startOffset,
+            endOffset = clazz.textRange.endOffset
+        )
+    }
+
+    /**
+     * Parses a Kotlin companion object.
+     *
+     * @param companionObject The Kotlin companion object
+     * @return A KotlinElement.CompanionObject object
+     */
+    private fun parseCompanionObject(companionObject: KtObjectDeclaration): KotlinElement.CompanionObject {
         return KotlinElement.CompanionObject(
+            name = companionObject.name ?: "Companion",
             startOffset = companionObject.textRange.startOffset,
             endOffset = companionObject.textRange.endOffset
         )
     }
 
     /**
-     * Creates an InitBlock element from a PsiElement.
+     * Parses a Kotlin init block.
+     *
+     * @param initBlock The Kotlin init block
+     * @return A KotlinElement.InitBlock object
      */
-    private fun createInitBlockElement(initBlock: PsiElement): KotlinElement.InitBlock {
+    private fun parseInitBlock(initBlock: KtClassInitializer): KotlinElement.InitBlock {
         return KotlinElement.InitBlock(
             startOffset = initBlock.textRange.startOffset,
             endOffset = initBlock.textRange.endOffset
-        )
-    }
-
-    /**
-     * Creates a ClassDeclaration element from a PsiElement.
-     */
-    private fun createClassElement(klass: PsiElement): KotlinElement.ClassDeclaration {
-        val text = klass.text
-        val name = text.substringAfter("class ").substringBefore("(").substringBefore("{").trim()
-
-        return KotlinElement.ClassDeclaration(
-            name = name,
-            isPublic = !text.contains("private") && !text.contains("protected"),
-            isPrivate = text.contains("private"),
-            isProtected = text.contains("protected"),
-            isData = text.contains("data class"),
-            isSealed = text.contains("sealed class"),
-            isInner = text.contains("inner class"),
-            startOffset = klass.textRange.startOffset,
-            endOffset = klass.textRange.endOffset
         )
     }
 }

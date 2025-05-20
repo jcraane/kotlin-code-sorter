@@ -1,78 +1,82 @@
 package com.github.jcraane.kotlincodesorter.model
 
 /**
- * Represents an element in a Kotlin file that can be sorted.
- * This is the base class for all Kotlin elements that will be sorted.
+ * Model representing a Kotlin element in a file.
+ * Used for sorting and organizing code.
  */
-sealed class KotlinElement(
-    val name: String,
-    val isPublic: Boolean,
-    val isPrivate: Boolean,
-    val isProtected: Boolean,
-    val isAbstract: Boolean,
-    val isOverride: Boolean,
-    val startOffset: Int,
-    val endOffset: Int
-) {
+sealed class KotlinElement {
+    /**
+     * The name of the element.
+     */
+    abstract val name: String
+
+    /**
+     * The start offset of the element in the file.
+     */
+    abstract val startOffset: Int
+
+    /**
+     * The end offset of the element in the file.
+     */
+    abstract val endOffset: Int
+
     /**
      * Represents a property in a Kotlin file.
      */
-    class Property(
-        name: String,
-        isPublic: Boolean,
-        isPrivate: Boolean,
-        isProtected: Boolean,
-        isAbstract: Boolean,
-        isOverride: Boolean,
+    data class Property(
+        override val name: String,
+        val isPrivate: Boolean,
+        val isPublic: Boolean,
+        val isAbstract: Boolean,
         val isViewModelProperty: Boolean,
-        startOffset: Int,
-        endOffset: Int
-    ) : KotlinElement(name, isPublic, isPrivate, isProtected, isAbstract, isOverride, startOffset, endOffset)
+        override val startOffset: Int,
+        override val endOffset: Int
+    ) : KotlinElement()
 
     /**
      * Represents a function in a Kotlin file.
      */
-    class Function(
-        name: String,
-        isPublic: Boolean,
-        isPrivate: Boolean,
-        isProtected: Boolean,
-        isAbstract: Boolean,
-        isOverride: Boolean,
+    data class Function(
+        override val name: String,
+        val isPrivate: Boolean,
+        val isPublic: Boolean,
+        val isProtected: Boolean,
+        val isAbstract: Boolean,
+        val isOverride: Boolean,
         val isComposable: Boolean,
         val isContentView: Boolean,
-        startOffset: Int,
-        endOffset: Int
-    ) : KotlinElement(name, isPublic, isPrivate, isProtected, isAbstract, isOverride, startOffset, endOffset)
-
-    /**
-     * Represents a companion object in a Kotlin file.
-     */
-    class CompanionObject(
-        startOffset: Int,
-        endOffset: Int
-    ) : KotlinElement("companion", true, false, false, false, false, startOffset, endOffset)
-
-    /**
-     * Represents an init block in a Kotlin file.
-     */
-    class InitBlock(
-        startOffset: Int,
-        endOffset: Int
-    ) : KotlinElement("init", false, false, false, false, false, startOffset, endOffset)
+        override val startOffset: Int,
+        override val endOffset: Int
+    ) : KotlinElement()
 
     /**
      * Represents a class declaration in a Kotlin file.
      */
-    class ClassDeclaration(
-        name: String,
-        isPublic: Boolean,
-        isPrivate: Boolean,
-        isProtected: Boolean,
-        val isData: Boolean,
-        val isSealed: Boolean,
-        val isInner: Boolean,
-        startOffset: Int,
-        endOffset: Int
-    ) : KotlinElement(name, isPublic, isPrivate, isProtected, false, false, startOffset, endOffset)
+    data class ClassDeclaration(
+        override val name: String,
+        val isDataClass: Boolean,
+        val isSealedClass: Boolean,
+        val isInnerClass: Boolean,
+        override val startOffset: Int,
+        override val endOffset: Int
+    ) : KotlinElement()
+
+    /**
+     * Represents a companion object in a Kotlin file.
+     */
+    data class CompanionObject(
+        override val name: String,
+        override val startOffset: Int,
+        override val endOffset: Int
+    ) : KotlinElement()
+
+    /**
+     * Represents an init block in a Kotlin file.
+     */
+    data class InitBlock(
+        override val startOffset: Int,
+        override val endOffset: Int
+    ) : KotlinElement() {
+        override val name: String = "init"
+    }
 }
