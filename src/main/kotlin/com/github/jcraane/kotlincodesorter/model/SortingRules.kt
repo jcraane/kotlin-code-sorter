@@ -35,11 +35,11 @@ object SortingRules {
             is KotlinElement.InitBlock -> 6
             is KotlinElement.Function -> {
                 when {
-                    element.isOverride -> 7
-                    element.isAbstract -> 8
-                    element.isPublic -> 9
-                    element.isProtected -> 10
-                    element.isPrivate -> 11
+                    element.isOverride && !element.isComposable -> 7
+                    element.isAbstract && !element.isComposable-> 8
+                    element.isPublic && !element.isComposable-> 9
+                    element.isProtected && !element.isComposable-> 10
+                    element.isPrivate && !element.isComposable-> 11
                     element.isComposable -> 12
                     else -> 13
                 }
