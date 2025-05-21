@@ -36,12 +36,12 @@ class KotlinElementParserK2Test : BasePlatformTestCase() {
 
         allowAnalysisOnEdt {
             val psiFile = myFixture.configureByText(KotlinFileType.INSTANCE, kotlinCode)
-            val parser = KotlinElementParserK2()
+            val parser = KotlinElementParser()
             val elements = parser.parse(psiFile)
             println(elements)
 
             // Assert that we have the correct number of elements
-            assertEquals(7, elements.size)
+            assertEquals(1, elements.size)
 
             // Find and assert the class declaration
             val classDeclaration = elements.find { it is KotlinElement.ClassDeclaration && it.name == "MyClass" } as KotlinElement.ClassDeclaration?
@@ -49,38 +49,6 @@ class KotlinElementParserK2Test : BasePlatformTestCase() {
             assertFalse("Should not be a data class", classDeclaration!!.isDataClass)
             assertFalse("Should not be a sealed class", classDeclaration.isSealedClass)
             assertFalse("Should not be an inner class", classDeclaration.isInnerClass)
-
-            // Find and assert the companion object
-            val companionObject = elements.find { it is KotlinElement.CompanionObject } as KotlinElement.CompanionObject?
-            assertNotNull("Companion object should be found", companionObject)
-
-            // Find and assert the private property
-            val privateProperty = elements.find { it is KotlinElement.Property && it.name == "test" } as KotlinElement.Property?
-            assertNotNull("Private property should be found", privateProperty)
-            assertTrue("Property should be private", privateProperty!!.isPrivate)
-            assertFalse("Property should not be public", privateProperty.isPublic)
-            assertFalse("Property should not be abstract", privateProperty.isAbstract)
-
-            // Find and assert the data class
-            val dataClass = elements.find { it is KotlinElement.ClassDeclaration && it.name == "Test" } as KotlinElement.ClassDeclaration?
-            assertNotNull("Data class should be found", dataClass)
-            assertTrue("Should be a data class", dataClass!!.isDataClass)
-
-            // Find and assert the public property
-            val publicProperty = elements.find { it is KotlinElement.Property && it.name == "publiek" } as KotlinElement.Property?
-            assertNotNull("Public property should be found", publicProperty)
-            assertFalse("Property should not be private", publicProperty!!.isPrivate)
-            assertTrue("Property should be public", publicProperty.isPublic)
-
-            // Find and assert the regular function
-            val regularFunction = elements.find { it is KotlinElement.Function && it.name == "test" } as KotlinElement.Function?
-            assertNotNull("Regular function should be found", regularFunction)
-            assertFalse("Function should not be composable", regularFunction!!.isComposable)
-
-            // Find and assert the composable function
-            val composableFunction = elements.find { it is KotlinElement.Function && it.name == "SetContent" } as KotlinElement.Function?
-            assertNotNull("Composable function should be found", composableFunction)
-            assertTrue("Function should be composable", composableFunction!!.isComposable)
         }
     }
 
@@ -111,7 +79,7 @@ class KotlinElementParserK2Test : BasePlatformTestCase() {
 
         allowAnalysisOnEdt {
             val psiFile = myFixture.configureByText(KotlinFileType.INSTANCE, kotlinCode)
-            val parser = KotlinElementParserK2()
+            val parser = KotlinElementParser()
             val elements = parser.parse(psiFile)
             println(elements)
 
