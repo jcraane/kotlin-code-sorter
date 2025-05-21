@@ -21,6 +21,8 @@ class SortingSettingsTest : BasePlatformTestCase() {
         settingsService.updateSortingRuleOrder(SortingRuleType.defaultOrder())
         // Set alphabetical sorting to true by default
         settingsService.setSortAlphabetically(true)
+        // Clear excluded element names
+        settingsService.setExcludedElementNames("")
     }
 
     override fun tearDown() {
@@ -28,6 +30,8 @@ class SortingSettingsTest : BasePlatformTestCase() {
         settingsService.updateSortingRuleOrder(SortingRuleType.defaultOrder())
         // Reset alphabetical sorting to true
         settingsService.setSortAlphabetically(true)
+        // Clear excluded element names
+        settingsService.setExcludedElementNames("")
         // Reset the settings service in SortingRules
         SortingRules.resetSettingsService()
         super.tearDown()
@@ -167,6 +171,49 @@ class SortingSettingsTest : BasePlatformTestCase() {
         assertTrue(comparator.compare(functionA, functionB) < 0) // A comes before B
         assertTrue(comparator.compare(functionB, functionC) < 0) // B comes before C
         assertTrue(comparator.compare(functionA, functionC) < 0) // A comes before C
+    }
+
+    fun testExcludedElementNames() {
+        // Create test elements of the same type with different names
+        val uiStateProperty = createProperty("uiState", isPrivate = true)
+        val normalProperty = createProperty("normalProperty", isPrivate = true)
+        val _uiStateProperty = createProperty("_uiState", isPrivate = true)
+        val viewModelProperty = createProperty("viewModel", isPrivate = true)
+
+        // Create functions with different names
+        val uiStateFunction = createFunction("uiState", isPrivate = true)
+        val normalFunction = createFunction("normalFunction", isPrivate = true)
+
+        // Test with no excluded elements (default)
+        val comparator = SortingRules.kotlinElementComparator
+
+        // Verify normal alphabetical ordering
+        assertTrue(comparator.compare(normalProperty, uiStateProperty) < 0) // normalProperty comes before uiState
+        assertTrue(comparator.compare(_uiStateProperty, normalProperty) < 0) // _uiState comes before normalProperty
+        assertTrue(comparator.compare(normalFunction, uiStateFunction) < 0) // normalFunction comes before uiState
+
+        // Set excluded element names
+        settingsService.setExcludedElementNames("uiState,_uiState")
+
+        // Verify excluded elements are preserved in their original positions
+        assertTrue(comparator.compare(uiStateProperty, normalProperty) > 0) // uiState stays after normalProperty
+        assertTrue(comparator.compare(_uiStateProperty, normalProperty) > 0) // _uiState stays after normalProperty
+        assertTrue(comparator.compare(uiStateFunction, normalFunction) > 0) // uiState function stays after normalFunction
+
+        // Verify non-excluded elements are still sorted normally
+        assertTrue(comparator.compare(normalProperty, viewModelProperty) < 0) // normalProperty comes before viewModel
+
+        // Test with multiple excluded elements in the comparison
+        // When both elements are excluded, they should be sorted normally
+        assertTrue(comparator.compare(_uiStateProperty, uiStateProperty) < 0) // _uiState comes before uiState alphabetically
+
+        // Clear excluded element names
+        settingsService.setExcludedElementNames("")
+
+        // Verify normal sorting is restored
+        assertTrue(comparator.compare(normalProperty, uiStateProperty) < 0) // normalProperty comes before uiState
+        assertTrue(comparator.compare(_uiStateProperty, normalProperty) < 0) // _uiState comes before normalProperty
+        assertTrue(comparator.compare(normalFunction, uiStateFunction) < 0) // normalFunction comes before uiState
     }
 
     // Helper methods to create test elements

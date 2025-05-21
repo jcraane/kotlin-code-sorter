@@ -11,6 +11,7 @@ class SortingSettingsConfigurable : Configurable {
     private val settingsService = SortingSettingsService.getInstance()
     private var currentRuleOrder: MutableList<SortingRuleType> = mutableListOf()
     private var sortAlphabetically: Boolean = true
+    private var excludedElementNames: String = ""
     private var modified = false
     private var panel: JPanel? = null
     private var contentPanel: JPanel? = null
@@ -21,6 +22,7 @@ class SortingSettingsConfigurable : Configurable {
         // Initialize with current settings
         currentRuleOrder = settingsService.getSortingRuleOrder().toMutableList()
         sortAlphabetically = settingsService.getSortAlphabetically()
+        excludedElementNames = settingsService.getExcludedElementNames()
 
         // Create a container panel with BorderLayout
         panel = JPanel(BorderLayout())
@@ -90,6 +92,24 @@ class SortingSettingsConfigurable : Configurable {
                         }
                 }
             }
+
+            group("Excluded Elements") {
+                row {
+                    label("Specify element names to exclude from sorting (comma-separated):")
+                }
+                row {
+                    textField()
+                        .text(excludedElementNames)
+                        .onChanged {
+                            excludedElementNames = it.text
+                            modified = true
+                        }
+                        .columns(COLUMNS_LARGE)
+                }
+                row {
+                    label("Example: uiState,_uiState,viewModel")
+                }
+            }
         }
 
         // Add the new content panel
@@ -105,12 +125,14 @@ class SortingSettingsConfigurable : Configurable {
     override fun apply() {
         settingsService.updateSortingRuleOrder(currentRuleOrder)
         settingsService.setSortAlphabetically(sortAlphabetically)
+        settingsService.setExcludedElementNames(excludedElementNames)
         modified = false
     }
 
     override fun reset() {
         currentRuleOrder = settingsService.getSortingRuleOrder().toMutableList()
         sortAlphabetically = settingsService.getSortAlphabetically()
+        excludedElementNames = settingsService.getExcludedElementNames()
         modified = false
         updateContentPanel()
     }

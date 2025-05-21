@@ -84,6 +84,24 @@ object SortingRules {
      * Comparator for sorting Kotlin elements according to the defined rules.
      */
     val kotlinElementComparator = Comparator<KotlinElement> { a, b ->
+        // Check if either element should be excluded from sorting
+        val excludedNames = settingsService.getExcludedElementNamesList()
+        val aExcluded = excludedNames.contains(a.name)
+        val bExcluded = excludedNames.contains(b.name)
+
+        // If both elements are excluded or neither is excluded, proceed with normal sorting
+        // If only one is excluded, preserve its original position
+        if (aExcluded && !bExcluded) {
+            // a is excluded, b is not - a should stay in its original position (after b)
+            return@Comparator 1
+        } else if (!aExcluded && bExcluded) {
+            // b is excluded, a is not - b should stay in its original position (after a)
+            return@Comparator -1
+        }
+
+        // If we get here, either both elements are excluded or neither is excluded
+        // In either case, proceed with normal sorting
+
         // First compare by rank
         val rankComparison = getElementRank(a) - getElementRank(b)
         if (rankComparison != 0) return@Comparator rankComparison

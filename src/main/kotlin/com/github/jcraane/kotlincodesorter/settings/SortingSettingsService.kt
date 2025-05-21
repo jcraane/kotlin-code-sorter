@@ -38,6 +38,33 @@ class SortingSettingsService {
     }
 
     /**
+     * Gets the comma-separated list of element names to exclude from sorting.
+     */
+    fun getExcludedElementNames(): String {
+        return getSettingsState().excludedElementNames
+    }
+
+    /**
+     * Sets the comma-separated list of element names to exclude from sorting.
+     */
+    fun setExcludedElementNames(value: String) {
+        getSettingsState().excludedElementNames = value
+    }
+
+    /**
+     * Gets the list of element names to exclude from sorting.
+     * Converts the comma-separated string to a list of trimmed strings.
+     */
+    fun getExcludedElementNamesList(): List<String> {
+        val excludedNames = getExcludedElementNames()
+        return if (excludedNames.isBlank()) {
+            emptyList()
+        } else {
+            excludedNames.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        }
+    }
+
+    /**
      * Gets the settings state.
      */
     private fun getSettingsState(): SortingSettingsState {

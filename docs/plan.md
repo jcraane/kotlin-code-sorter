@@ -94,11 +94,11 @@ With additional rules:
 1. ✅Add settings UI to configure sorting preferences
 2. Implement integration with code cleanup
 3. Add visual indicators for code that doesn't follow the rules
-4. Add support for custom rule configurations
+5. ✅Add setting to UI to exclude certain elements, by specifying the name comma separated, from sorting. Name is the name of the variable, function etc.
 
 ### Phase 3: Testing and Refinement
-1. Write unit tests for the sorting algorithm
-2. Test with various Kotlin file structures
+1. ✅Write unit tests for the sorting algorithm
+2. ✅Test with various Kotlin file structures
 3. Gather user feedback and refine the implementation
 4. Performance optimization for large files
 
@@ -120,7 +120,7 @@ With additional rules:
 fun sortKotlinFile(file: KtFile): KtFile {
     // Parse the file into elements
     val elements = KotlinElementParser.parse(file)
-    
+
     // Sort the elements
     val sortedElements = elements.sortedWith(compareBy(
         // Primary sort by element type according to hierarchy
@@ -130,13 +130,13 @@ fun sortKotlinFile(file: KtFile): KtFile {
         // Tertiary sort by visibility (public first)
         { element -> if (element.isPublic) 0 else 1 }
     ))
-    
+
     // Special case for viewModel properties
     moveViewModelPropertiesToTop(sortedElements)
-    
+
     // Special case for ContentView composable
     moveContentViewComposableToTop(sortedElements)
-    
+
     // Apply the sorted elements back to the file
     return KotlinElementSorter.applySort(file, sortedElements)
 }

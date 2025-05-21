@@ -32,6 +32,13 @@ class SortingSettingsState : PersistentStateComponent<SortingSettingsState> {
     var sortAlphabetically: Boolean = true
 
     /**
+     * Comma-separated list of element names to exclude from sorting.
+     * Elements with these names will remain in their original positions.
+     * Default is an empty string.
+     */
+    var excludedElementNames: String = ""
+
+    /**
      * Converts the stored string list to a list of SortingRuleType.
      */
     fun getSortingRuleTypes(): List<SortingRuleType> {
