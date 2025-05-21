@@ -12,6 +12,14 @@
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow factoryClass="com.github.jcraane.kotlincodesorter.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
         <postStartupActivity implementation="com.github.jcraane.kotlincodesorter.startup.MyProjectActivity" />
+
+        <!-- Settings -->
+        <applicationService serviceImplementation="com.github.jcraane.kotlincodesorter.settings.SortingSettingsState"/>
+        <applicationConfigurable
+                parentId="tools"
+                instance="com.github.jcraane.kotlincodesorter.settings.SortingSettingsConfigurable"
+                id="com.github.jcraane.kotlincodesorter.settings.SortingSettingsConfigurable"
+                displayName="Kotlin Code Sorter"/>
     </extensions>
 
     <extensions defaultExtensionNs="org.jetbrains.kotlin">

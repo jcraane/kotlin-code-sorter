@@ -1,5 +1,8 @@
 package com.github.jcraane.kotlincodesorter.model
 
+import com.github.jcraane.kotlincodesorter.settings.SortingRuleType
+import com.github.jcraane.kotlincodesorter.settings.SortingSettingsService
+
 /**
  * Defines the rules for sorting Kotlin elements.
  * The sorting follows this hierarchy:
@@ -15,37 +18,66 @@ package com.github.jcraane.kotlincodesorter.model
  * 10. private fun
  * 11. @Composable fun (ContentView() before the rest)
  * 12. data class, sealed class, inner class
+ *
+ * This order can be customized in the settings.
  */
 object SortingRules {
     /**
+     * Gets the settings service instance.
+     */
+    private var _settingsService: SortingSettingsService? = null
+
+    /**
+     * Gets or sets the settings service.
+     * This allows for testing with a custom settings service.
+     */
+    var settingsService: SortingSettingsService
+        get() = _settingsService ?: SortingSettingsService.getInstance()
+        set(value) {
+            _settingsService = value
+        }
+
+    /**
+     * Resets the settings service to use the default instance.
+     * This is useful for testing.
+     */
+    fun resetSettingsService() {
+        _settingsService = null
+    }
+    /**
      * Gets the rank of a Kotlin element based on the sorting hierarchy.
      * Lower rank means the element should appear earlier in the sorted file.
+     * The rank is determined by the order of rules in the settings.
      */
     fun getElementRank(element: KotlinElement): Int {
-        return when (element) {
+        val ruleType = when (element) {
             is KotlinElement.Property -> {
                 when {
-                    element.isAbstract -> 1
-                    element.isPublic -> 2
-                    element.isPrivate -> 3
-                    else -> 4 // protected or other visibility
+                    element.isAbstract -> SortingRuleType.ABSTRACT_PROPERTY
+                    element.isPublic -> SortingRuleType.PUBLIC_PROPERTY
+                    element.isPrivate -> SortingRuleType.PRIVATE_PROPERTY
+                    else -> SortingRuleType.PUBLIC_PROPERTY // Default to public for other visibilities
                 }
             }
-            is KotlinElement.CompanionObject -> 5
-            is KotlinElement.InitBlock -> 6
+            is KotlinElement.CompanionObject -> SortingRuleType.COMPANION_OBJECT
+            is KotlinElement.InitBlock -> SortingRuleType.INIT_BLOCK
             is KotlinElement.Function -> {
                 when {
-                    element.isOverride && !element.isComposable -> 7
-                    element.isAbstract && !element.isComposable-> 8
-                    element.isPublic && !element.isComposable-> 9
-                    element.isProtected && !element.isComposable-> 10
-                    element.isPrivate && !element.isComposable-> 11
-                    element.isComposable -> 12
-                    else -> 13
+                    element.isOverride && !element.isComposable -> SortingRuleType.OVERRIDE_FUNCTION
+                    element.isAbstract && !element.isComposable -> SortingRuleType.ABSTRACT_FUNCTION
+                    element.isPublic && !element.isComposable -> SortingRuleType.PUBLIC_FUNCTION
+                    element.isProtected && !element.isComposable -> SortingRuleType.PROTECTED_FUNCTION
+                    element.isPrivate && !element.isComposable -> SortingRuleType.PRIVATE_FUNCTION
+                    element.isComposable -> SortingRuleType.COMPOSABLE_FUNCTION
+                    else -> SortingRuleType.PUBLIC_FUNCTION // Default to public for other cases
                 }
             }
-            is KotlinElement.ClassDeclaration -> 14
+            is KotlinElement.ClassDeclaration -> SortingRuleType.CLASS_DECLARATION
         }
+
+        // Get the index of the rule type in the current sorting order
+        val sortingOrder = settingsService.getSortingRuleOrder()
+        return sortingOrder.indexOf(ruleType).takeIf { it >= 0 } ?: Int.MAX_VALUE
     }
 
     /**
