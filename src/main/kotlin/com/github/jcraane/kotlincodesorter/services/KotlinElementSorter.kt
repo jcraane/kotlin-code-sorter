@@ -22,7 +22,6 @@ import org.jetbrains.kotlin.psi.psiUtil.getChildrenOfType
 class KotlinElementSorter {
     private val log = logger<KotlinElementSorter>()
 
-    //    private val parser = KotlinElementParser()
     private val parser = KotlinElementParserK2()
 
     /**
