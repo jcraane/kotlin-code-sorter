@@ -7,11 +7,11 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDocumentManager
-import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
+import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassBody
-import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.psiUtil.findDescendantOfType
 import org.jetbrains.kotlin.psi.psiUtil.getChildrenOfType
@@ -21,7 +21,9 @@ import org.jetbrains.kotlin.psi.psiUtil.getChildrenOfType
  */
 class KotlinElementSorter {
     private val log = logger<KotlinElementSorter>()
-    private val parser = KotlinElementParser()
+
+    //    private val parser = KotlinElementParser()
+    private val parser = KotlinElementParserK2()
 
     /**
      * Sorts the elements in a Kotlin file according to the defined rules.
@@ -54,6 +56,7 @@ class KotlinElementSorter {
      * @param file The Kotlin file
      * @return True if the sorting was successful, false otherwise
      */
+    @OptIn(KaAllowAnalysisOnEdt::class)
     private fun sortClassElements(project: Project, file: PsiFile): Boolean {
         val documentManager = PsiDocumentManager.getInstance(project)
         val document = documentManager.getDocument(file) ?: return false
@@ -64,7 +67,9 @@ class KotlinElementSorter {
         if (classes.isEmpty()) {
             log.info("No classes found in file: ${file.name}")
             // The file might contain top-level elements that can be sorted
-            val elements = parser.parse(file)
+            val elements = allowAnalysisOnEdt {
+                parser.parse(file)
+            }
             if (elements.isEmpty()) {
                 return false
             }
@@ -75,19 +80,21 @@ class KotlinElementSorter {
         var success = true
 
         // Sort elements within each class
-        WriteCommandAction.runWriteCommandAction(project) {
-            try {
-                for (ktClass in classes) {
-                    val classBody = ktClass.findDescendantOfType<KtClassBody>() ?: continue
-                    val classBodyRange = classBody.textRange
+        try {
+            for (ktClass in classes) {
+                val classBody = ktClass.findDescendantOfType<KtClassBody>() ?: continue
+                val classBodyRange = classBody.textRange
 
-                    // Only parse elements within this class body
-                    val elementsInClass = parser.parse(ktClass)
-                    if (elementsInClass.isEmpty()) continue
+                // Only parse elements within this class body
+                val elementsInClass = allowAnalysisOnEdt {
+                    parser.parse(ktClass)
+                }
+                if (elementsInClass.isEmpty()) continue
 
-                    // Sort the elements within the class
-                    val sortedElements = elementsInClass.sortedWith(SortingRules.kotlinElementComparator)
+                // Sort the elements within the class
+                val sortedElements = elementsInClass.sortedWith(SortingRules.kotlinElementComparator)
 
+                WriteCommandAction.runWriteCommandAction(project) {
                     // Create the sorted content for the class body
                     val newClassBodyContent = constructSortedClassBodyContent(document, sortedElements, classBody)
 
@@ -98,13 +105,13 @@ class KotlinElementSorter {
                         newClassBodyContent
                     )
                 }
-
-                // Commit the document changes
-                documentManager.commitDocument(document)
-            } catch (e: Exception) {
-                log.error("Error applying sort to classes", e)
-                success = false
             }
+
+            // Commit the document changes
+            documentManager.commitDocument(document)
+        } catch (e: Exception) {
+            log.error("Error applying sort to classes", e)
+            success = false
         }
 
         return success
@@ -121,7 +128,7 @@ class KotlinElementSorter {
     private fun constructSortedClassBodyContent(
         document: Document,
         sortedElements: List<KotlinElement>,
-        classBody: KtClassBody
+        classBody: KtClassBody,
     ): String {
         val sb = StringBuilder()
         val classBodyStart = classBody.textRange.startOffset + 1 // +1 to skip the opening brace
@@ -144,7 +151,7 @@ class KotlinElementSorter {
 
         // Close with a newline
         sb.append("\n")
-        
+
         return sb.toString()
     }
 
@@ -173,7 +180,8 @@ class KotlinElementSorter {
                 }
 
                 // Find the start and end of the content we're sorting
-                val startOffset = sortedElements.minByOrNull { it.startOffset }?.startOffset ?: return@runWriteCommandAction
+                val startOffset =
+                    sortedElements.minByOrNull { it.startOffset }?.startOffset ?: return@runWriteCommandAction
                 val endOffset = sortedElements.maxByOrNull { it.endOffset }?.endOffset ?: return@runWriteCommandAction
 
                 // Build the new content with sorted elements

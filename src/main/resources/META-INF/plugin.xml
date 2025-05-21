@@ -14,6 +14,10 @@
         <postStartupActivity implementation="com.github.jcraane.kotlincodesorter.startup.MyProjectActivity" />
     </extensions>
 
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <supportsKotlinPluginMode supportsK2="true" />
+    </extensions>
+
     <actions>
         <action id="KotlinCodeSorter.SortFile"
                 class="com.github.jcraane.kotlincodesorter.actions.SortKotlinFileAction"
