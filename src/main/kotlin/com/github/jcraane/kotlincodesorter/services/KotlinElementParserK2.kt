@@ -3,15 +3,17 @@ package com.github.jcraane.kotlincodesorter.services
 import com.github.jcraane.kotlincodesorter.model.KotlinElement
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.psi.PsiFile
-import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.KtAnalysisSession
 import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.symbols.KtClassOrObjectSymbol
-import org.jetbrains.kotlin.analysis.api.symbols.KtFunctionSymbol
-import org.jetbrains.kotlin.analysis.api.symbols.KtPropertySymbol
+import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
-import org.jetbrains.kotlin.psi.KtElement
+import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtInitializerList
+import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtObjectDeclaration
+import org.jetbrains.kotlin.psi.KtProperty
+import org.jetbrains.kotlin.psi.psiUtil.containingClass
 
 /**
  * Service for parsing Kotlin files into KotlinElement objects using K2.
@@ -31,7 +33,6 @@ class KotlinElementParserK2 {
             return emptyList()
         }
 
-        //(file.declarations.first() as? KtClass)?.declarations?.last()?.annotationEntries?.first()?.text
         return analyze(file) {
             val declarations = if (file.declarations.size == 1) {
                 (file.declarations.first() as? KtClassOrObject)?.declarations ?: emptyList()
@@ -39,8 +40,7 @@ class KotlinElementParserK2 {
                 file.declarations
             }
 
-            println(declarations)
-            emptyList()
+            mapKtDeclarationsToKotlinElements(declarations)
         }
     }
 
@@ -52,53 +52,134 @@ class KotlinElementParserK2 {
      */
     fun parse(ktClass: KtClassOrObject): List<KotlinElement> {
         return analyze(ktClass) {
-            emptyList()
+            val declarations = if (ktClass.declarations.size == 1) {
+                (ktClass.declarations.first() as? KtClassOrObject)?.declarations ?: emptyList()
+            } else {
+                ktClass.declarations
+            }
+
+            mapKtDeclarationsToKotlinElements(declarations)
         }
     }
 
     /**
-     * Parses all elements in a Kotlin file.
+     * Maps KtDeclaration objects to KotlinElement objects using the K2 analysis API.
      *
-     * @param file The Kotlin file
-     * @return A list of KotlinElement objects
+     * @param declarations List of KtDeclaration objects to be mapped
+     * @return List of KotlinElement objects
      */
-/*
-    private fun KaSession.parseElements(file: KtFile): List<KotlinElement> {
-        val elements = this.parseElements(file)
-        return elements
-    }
-*/
-
-    /**
-     * Parses all elements in a Kotlin class.
-     *
-     * @param ktClass The Kotlin class
-     * @return A list of KotlinElement objects
-     */
-/*
-    private fun KaSession.parseElementsInClass(ktClass: KtClassOrObject): List<KotlinElement> {
-        val elements = mutableListOf<KotlinElement>()
-
-        val classSymbol = ktClass.getClassOrObjectSymbol()
-
-        classSymbol.getMemberScope().getAllSymbols().forEach { symbol ->
-            when (symbol) {
-                is KtPropertySymbol -> elements.add(parseProperty(symbol))
-                is KtFunctionSymbol -> elements.add(parseFunction(symbol))
-                is KtClassOrObjectSymbol -> {
-                    if (symbol.isCompanionObject) {
-                        elements.add(parseCompanionObject(symbol))
-                    } else {
-                        elements.add(parseClass(symbol))
-                    }
-                }
-                is KtClassInitializerSymbol -> elements.add(parseInitBlock(symbol))
-                // Add other class member types as needed
+    fun mapKtDeclarationsToKotlinElements(declarations: List<KtDeclaration>): List<KotlinElement> {
+        return declarations.mapNotNull { declaration ->
+            when (declaration) {
+                is KtProperty -> mapPropertyToKotlinElement(declaration)
+                is KtNamedFunction -> mapFunctionToKotlinElement(declaration)
+                is KtClass -> mapClassToKotlinElement(declaration)
+                is KtObjectDeclaration -> mapObjectToKotlinElement(declaration)
+                is KtInitializerList -> mapInitBlockToKotlinElement(declaration)
+                else -> null // Skip unsupported declarations
             }
         }
-
-        return elements
     }
-*/
 
+    /**
+     * Maps a KtProperty to a KotlinElement.Property
+     */
+    private fun mapPropertyToKotlinElement(property: KtProperty): KotlinElement.Property {
+        val modifierList = property.modifierList
+
+        val isPrivate = modifierList?.hasModifier(KtTokens.PRIVATE_KEYWORD) ?: false
+        val isPublic = !isPrivate && !(modifierList?.hasModifier(KtTokens.PROTECTED_KEYWORD) ?: true)
+        val isAbstract = modifierList?.hasModifier(KtTokens.ABSTRACT_KEYWORD) ?: false
+
+        val isViewModelProperty = property.containingClass()?.let {
+            it.superTypeListEntries.any { entry ->
+                entry.typeReference?.text?.contains("ViewModel") ?: false
+            }
+        } ?: false
+
+        return KotlinElement.Property(
+            name = property.name ?: "",
+            isPrivate = isPrivate,
+            isPublic = isPublic,
+            isAbstract = isAbstract,
+            isViewModelProperty = isViewModelProperty,
+            startOffset = property.textRange.startOffset,
+            endOffset = property.textRange.endOffset
+        )
+    }
+
+    /**
+     * Maps a KtNamedFunction to a KotlinElement.Function
+     */
+    private fun mapFunctionToKotlinElement(function: KtNamedFunction): KotlinElement.Function {
+        val modifierList = function.modifierList
+
+        val isPrivate = modifierList?.hasModifier(KtTokens.PRIVATE_KEYWORD) ?: false
+        val isProtected = modifierList?.hasModifier(KtTokens.PROTECTED_KEYWORD) ?: false
+        val isPublic = !isPrivate && !isProtected
+        val isAbstract = modifierList?.hasModifier(KtTokens.ABSTRACT_KEYWORD) ?: false
+        val isOverride = modifierList?.hasModifier(KtTokens.OVERRIDE_KEYWORD) ?: false
+
+        // Check for Compose annotations
+        val annotations = function.annotationEntries.toList()
+        val isComposable = annotations.any { it.shortName?.asString() == "Composable" }
+        val isContentView = annotations.any { it.shortName?.asString() == "ContentView" } ||
+            function.name?.contains("Content", ignoreCase = true) == true
+
+        return KotlinElement.Function(
+            name = function.name ?: "",
+            isPrivate = isPrivate,
+            isPublic = isPublic,
+            isProtected = isProtected,
+            isAbstract = isAbstract,
+            isOverride = isOverride,
+            isComposable = isComposable,
+            isContentView = isContentView,
+            startOffset = function.textRange.startOffset,
+            endOffset = function.textRange.endOffset
+        )
+    }
+
+    /**
+     * Maps a KtClass to a KotlinElement.ClassDeclaration
+     */
+    private fun mapClassToKotlinElement(ktClass: KtClass): KotlinElement.ClassDeclaration {
+        val isDataClass = ktClass.isData()
+        val isSealedClass = ktClass.modifierList?.hasModifier(KtTokens.SEALED_KEYWORD) ?: false
+        val isInnerClass = ktClass.modifierList?.hasModifier(KtTokens.INNER_KEYWORD) ?: false
+
+        return KotlinElement.ClassDeclaration(
+            name = ktClass.name ?: "",
+            isDataClass = isDataClass,
+            isSealedClass = isSealedClass,
+            isInnerClass = isInnerClass,
+            startOffset = ktClass.textRange.startOffset,
+            endOffset = ktClass.textRange.endOffset
+        )
+    }
+
+    /**
+     * Maps a KtObjectDeclaration to a KotlinElement.CompanionObject if it's a companion object
+     */
+    private fun mapObjectToKotlinElement(objectDeclaration: KtObjectDeclaration): KotlinElement? {
+        return if (objectDeclaration.isCompanion()) {
+            KotlinElement.CompanionObject(
+                name = objectDeclaration.name ?: "companion",
+                startOffset = objectDeclaration.textRange.startOffset,
+                endOffset = objectDeclaration.textRange.endOffset
+            )
+        } else {
+            null // Skip non-companion objects
+        }
+    }
+
+    /**
+     * Maps a KtInitializerList to a KotlinElement.InitBlock
+     */
+    private fun mapInitBlockToKotlinElement(initBlock: KtInitializerList): KotlinElement.InitBlock {
+        return KotlinElement.InitBlock(
+            startOffset = initBlock.textRange.startOffset,
+            endOffset = initBlock.textRange.endOffset
+        )
+    }
 }
