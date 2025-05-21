@@ -102,7 +102,11 @@ object SortingRules {
             if (!a.isContentView && b.isContentView) return@Comparator 1
         }
 
-        // Alphabetical ordering for same type
-        a.name.compareTo(b.name)
+        // Alphabetical ordering for same type (if enabled)
+        if (settingsService.getSortAlphabetically()) {
+            a.name.compareTo(b.name)
+        } else {
+            0 // Keep original order if alphabetical sorting is disabled
+        }
     }
 }

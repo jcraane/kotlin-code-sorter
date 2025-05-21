@@ -85,13 +85,13 @@ With additional rules:
 ## Implementation Plan
 
 ### Phase 1: Core Functionality
-1. Set up the plugin project structure
-2. Implement the KotlinElement model and parser
-3. Implement the basic sorting algorithm
-4. Create a simple action to trigger the sorting
+1. ✅Set up the plugin project structure
+2. ✅Implement the KotlinElement model and parser
+3. ✅Implement the basic sorting algorithm
+4. ✅Create a simple action to trigger the sorting
 
 ### Phase 2: Enhanced Features
-1. Add settings UI to configure sorting preferences
+1. ✅Add settings UI to configure sorting preferences
 2. Implement integration with code cleanup
 3. Add visual indicators for code that doesn't follow the rules
 4. Add support for custom rule configurations

@@ -26,6 +26,12 @@ class SortingSettingsState : PersistentStateComponent<SortingSettingsState> {
         .toMutableList()
 
     /**
+     * Whether to sort elements of the same type alphabetically.
+     * Default is true.
+     */
+    var sortAlphabetically: Boolean = true
+
+    /**
      * Converts the stored string list to a list of SortingRuleType.
      */
     fun getSortingRuleTypes(): List<SortingRuleType> {

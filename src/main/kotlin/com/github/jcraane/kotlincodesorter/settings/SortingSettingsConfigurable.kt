@@ -10,6 +10,7 @@ import java.awt.BorderLayout
 class SortingSettingsConfigurable : Configurable {
     private val settingsService = SortingSettingsService.getInstance()
     private var currentRuleOrder: MutableList<SortingRuleType> = mutableListOf()
+    private var sortAlphabetically: Boolean = true
     private var modified = false
     private var panel: JPanel? = null
     private var contentPanel: JPanel? = null
@@ -19,6 +20,7 @@ class SortingSettingsConfigurable : Configurable {
     override fun createComponent(): JComponent {
         // Initialize with current settings
         currentRuleOrder = settingsService.getSortingRuleOrder().toMutableList()
+        sortAlphabetically = settingsService.getSortAlphabetically()
 
         // Create a container panel with BorderLayout
         panel = JPanel(BorderLayout())
@@ -71,9 +73,21 @@ class SortingSettingsConfigurable : Configurable {
                 row {
                     button("Reset to Default") {
                         currentRuleOrder = SortingRuleType.defaultOrder().toMutableList()
+                        sortAlphabetically = true
                         modified = true
                         updateContentPanel()
                     }
+                }
+            }
+
+            group("Alphabetical Sorting") {
+                row {
+                    checkBox("Sort elements on the same level alphabetically")
+                        .selected(sortAlphabetically)
+                        .onChanged {
+                            sortAlphabetically = it.isSelected
+                            modified = true
+                        }
                 }
             }
         }
@@ -90,11 +104,13 @@ class SortingSettingsConfigurable : Configurable {
 
     override fun apply() {
         settingsService.updateSortingRuleOrder(currentRuleOrder)
+        settingsService.setSortAlphabetically(sortAlphabetically)
         modified = false
     }
 
     override fun reset() {
         currentRuleOrder = settingsService.getSortingRuleOrder().toMutableList()
+        sortAlphabetically = settingsService.getSortAlphabetically()
         modified = false
         updateContentPanel()
     }

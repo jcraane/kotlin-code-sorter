@@ -5,6 +5,7 @@ import com.github.jcraane.kotlincodesorter.model.SortingRules
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import org.jetbrains.kotlin.psi.KtFile
 import org.junit.Test
+import junit.framework.TestCase.assertEquals
 
 class SortingSettingsTest : BasePlatformTestCase() {
 
@@ -18,11 +19,15 @@ class SortingSettingsTest : BasePlatformTestCase() {
         SortingRules.settingsService = settingsService
         // Reset settings to default before each test
         settingsService.updateSortingRuleOrder(SortingRuleType.defaultOrder())
+        // Set alphabetical sorting to true by default
+        settingsService.setSortAlphabetically(true)
     }
 
     override fun tearDown() {
         // Reset settings to default after each test
         settingsService.updateSortingRuleOrder(SortingRuleType.defaultOrder())
+        // Reset alphabetical sorting to true
+        settingsService.setSortAlphabetically(true)
         // Reset the settings service in SortingRules
         SortingRules.resetSettingsService()
         super.tearDown()
@@ -131,6 +136,37 @@ class SortingSettingsTest : BasePlatformTestCase() {
         assertTrue(privatePropertyRank < companionObjectRank)
         assertTrue(companionObjectRank < initBlockRank)
         assertTrue(initBlockRank < classDeclarationRank)
+    }
+
+    fun testAlphabeticalSorting() {
+        // Create test elements of the same type with different names
+        val functionA = createFunction("aFunction", isPublic = true)
+        val functionB = createFunction("bFunction", isPublic = true)
+        val functionC = createFunction("cFunction", isPublic = true)
+
+        // Test with alphabetical sorting enabled (default)
+        val comparator = SortingRules.kotlinElementComparator
+
+        // Verify alphabetical ordering
+        assertTrue(comparator.compare(functionA, functionB) < 0) // A comes before B
+        assertTrue(comparator.compare(functionB, functionC) < 0) // B comes before C
+        assertTrue(comparator.compare(functionA, functionC) < 0) // A comes before C
+
+        // Disable alphabetical sorting
+        settingsService.setSortAlphabetically(false)
+
+        // Verify no alphabetical ordering
+        assertEquals(0, comparator.compare(functionA, functionB)) // Order is preserved
+        assertEquals(0, comparator.compare(functionB, functionC)) // Order is preserved
+        assertEquals(0, comparator.compare(functionA, functionC)) // Order is preserved
+
+        // Re-enable alphabetical sorting
+        settingsService.setSortAlphabetically(true)
+
+        // Verify alphabetical ordering is restored
+        assertTrue(comparator.compare(functionA, functionB) < 0) // A comes before B
+        assertTrue(comparator.compare(functionB, functionC) < 0) // B comes before C
+        assertTrue(comparator.compare(functionA, functionC) < 0) // A comes before C
     }
 
     // Helper methods to create test elements

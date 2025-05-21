@@ -24,6 +24,20 @@ class SortingSettingsService {
     }
 
     /**
+     * Gets whether elements of the same type should be sorted alphabetically.
+     */
+    fun getSortAlphabetically(): Boolean {
+        return getSettingsState().sortAlphabetically
+    }
+
+    /**
+     * Sets whether elements of the same type should be sorted alphabetically.
+     */
+    fun setSortAlphabetically(value: Boolean) {
+        getSettingsState().sortAlphabetically = value
+    }
+
+    /**
      * Gets the settings state.
      */
     private fun getSettingsState(): SortingSettingsState {
