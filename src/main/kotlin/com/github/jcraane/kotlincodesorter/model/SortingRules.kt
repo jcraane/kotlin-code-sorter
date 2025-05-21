@@ -89,6 +89,11 @@ object SortingRules {
         val aExcluded = excludedNames.contains(a.name)
         val bExcluded = excludedNames.contains(b.name)
 
+        if (aExcluded && bExcluded) {
+            return@Comparator 0 // Keep original order between excluded elements
+        }
+
+
         // If both elements are excluded or neither is excluded, proceed with normal sorting
         // If only one is excluded, preserve its original position
         if (aExcluded && !bExcluded) {

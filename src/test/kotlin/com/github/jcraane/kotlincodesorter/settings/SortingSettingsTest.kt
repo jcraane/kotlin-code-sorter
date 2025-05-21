@@ -204,8 +204,16 @@ class SortingSettingsTest : BasePlatformTestCase() {
         assertTrue(comparator.compare(normalProperty, viewModelProperty) < 0) // normalProperty comes before viewModel
 
         // Test with multiple excluded elements in the comparison
-        // When both elements are excluded, they should be sorted normally
-        assertTrue(comparator.compare(_uiStateProperty, uiStateProperty) < 0) // _uiState comes before uiState alphabetically
+        // When both elements are excluded, they should maintain their original relative order
+        assertEquals(0, comparator.compare(_uiStateProperty, uiStateProperty)) // Both excluded elements maintain original order
+        assertEquals(0, comparator.compare(uiStateProperty, _uiStateProperty)) // Order should be preserved in both directions
+
+        // Add test case for the specific case mentioned in the issue
+        val _uiStatePropertyFirst = createProperty("_uiState", isPrivate = true)
+        val uiStatePropertySecond = createProperty("uiState", isPrivate = true)
+
+        // This simulates the original order in the code: _uiState followed by uiState
+        assertEquals(0, comparator.compare(_uiStatePropertyFirst, uiStatePropertySecond)) // Original order should be preserved
 
         // Clear excluded element names
         settingsService.setExcludedElementNames("")
