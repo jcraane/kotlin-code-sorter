@@ -1,6 +1,6 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
-# kotlin-code-sorter Changelog
+# kotlin-code-sort Changelog
 
 ## [Unreleased]
 ### Added
