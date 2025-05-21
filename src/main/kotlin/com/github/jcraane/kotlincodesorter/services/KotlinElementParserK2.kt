@@ -4,16 +4,20 @@ import com.github.jcraane.kotlincodesorter.model.KotlinElement
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.psi.PsiFile
 import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.idea.refactoring.isAbstract
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtFile
-import org.jetbrains.kotlin.psi.KtInitializerList
+import org.jetbrains.kotlin.psi.KtClassInitializer
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtObjectDeclaration
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.psiUtil.containingClass
+import org.jetbrains.kotlin.psi.psiUtil.isPrivate
+import org.jetbrains.kotlin.psi.psiUtil.isProtected
+import org.jetbrains.kotlin.psi.psiUtil.isPublic
 
 /**
  * Service for parsing Kotlin files into KotlinElement objects using K2.
@@ -34,14 +38,53 @@ class KotlinElementParserK2 {
         }
 
         return analyze(file) {
-            val declarations = if (file.declarations.size == 1) {
-                (file.declarations.first() as? KtClassOrObject)?.declarations ?: emptyList()
-            } else {
-                file.declarations
+            parseDeclarationsRecursively(file.declarations)
+        }
+    }
+
+    /**
+     * Recursively parses declarations and their nested declarations.
+     *
+     * @param declarations List of KtDeclaration objects to be parsed
+     * @return List of KotlinElement objects
+     */
+    private fun parseDeclarationsRecursively(declarations: List<KtDeclaration>): List<KotlinElement> {
+        val elements = mutableListOf<KotlinElement>()
+
+        declarations.forEach { declaration ->
+            val element = when (declaration) {
+                is KtProperty -> mapPropertyToKotlinElement(declaration)
+                is KtNamedFunction -> mapFunctionToKotlinElement(declaration)
+                is KtClass -> {
+                    // Don't process nested declarations for sealed classes, they're part of the class
+                    val classElement = mapClassToKotlinElement(declaration)
+                    classElement
+                }
+
+                is KtObjectDeclaration -> {
+                    // Only process object declarations if they're not inside a sealed class
+                    val containingClass = declaration.containingClass()
+                    val isInsideSealedClass = containingClass?.modifierList?.hasModifier(KtTokens.SEALED_KEYWORD) ?: false
+
+                    if (!isInsideSealedClass) {
+                        val element = mapObjectToKotlinElement(declaration)
+                        element
+                    } else {
+                        // Skip object declarations inside sealed classes
+                        null
+                    }
+                }
+
+                is KtClassInitializer -> mapInitBlockToKotlinElement(declaration)
+                else -> null // Skip unsupported declarations
             }
 
-            mapKtDeclarationsToKotlinElements(declarations)
+            if (element != null) {
+                elements.add(element)
+            }
         }
+
+        return elements
     }
 
     /**
@@ -52,45 +95,15 @@ class KotlinElementParserK2 {
      */
     fun parse(ktClass: KtClassOrObject): List<KotlinElement> {
         return analyze(ktClass) {
-            val declarations = if (ktClass.declarations.size == 1) {
-                (ktClass.declarations.first() as? KtClassOrObject)?.declarations ?: emptyList()
-            } else {
-                ktClass.declarations
-            }
-
-            mapKtDeclarationsToKotlinElements(declarations)
+            parseDeclarationsRecursively(ktClass.declarations)
         }
     }
 
-    /**
-     * Maps KtDeclaration objects to KotlinElement objects using the K2 analysis API.
-     *
-     * @param declarations List of KtDeclaration objects to be mapped
-     * @return List of KotlinElement objects
-     */
-    fun mapKtDeclarationsToKotlinElements(declarations: List<KtDeclaration>): List<KotlinElement> {
-        return declarations.mapNotNull { declaration ->
-            when (declaration) {
-                is KtProperty -> mapPropertyToKotlinElement(declaration)
-                is KtNamedFunction -> mapFunctionToKotlinElement(declaration)
-                is KtClass -> mapClassToKotlinElement(declaration)
-                is KtObjectDeclaration -> mapObjectToKotlinElement(declaration)
-                is KtInitializerList -> mapInitBlockToKotlinElement(declaration)
-                else -> null // Skip unsupported declarations
-            }
-        }
-    }
 
     /**
      * Maps a KtProperty to a KotlinElement.Property
      */
     private fun mapPropertyToKotlinElement(property: KtProperty): KotlinElement.Property {
-        val modifierList = property.modifierList
-
-        val isPrivate = modifierList?.hasModifier(KtTokens.PRIVATE_KEYWORD) ?: false
-        val isPublic = !isPrivate && !(modifierList?.hasModifier(KtTokens.PROTECTED_KEYWORD) ?: true)
-        val isAbstract = modifierList?.hasModifier(KtTokens.ABSTRACT_KEYWORD) ?: false
-
         val isViewModelProperty = property.containingClass()?.let {
             it.superTypeListEntries.any { entry ->
                 entry.typeReference?.text?.contains("ViewModel") ?: false
@@ -99,9 +112,9 @@ class KotlinElementParserK2 {
 
         return KotlinElement.Property(
             name = property.name ?: "",
-            isPrivate = isPrivate,
-            isPublic = isPublic,
-            isAbstract = isAbstract,
+            isPrivate = property.isPrivate(),
+            isPublic = property.isPublic,
+            isAbstract = property.isAbstract(),
             isViewModelProperty = isViewModelProperty,
             startOffset = property.textRange.startOffset,
             endOffset = property.textRange.endOffset
@@ -114,10 +127,6 @@ class KotlinElementParserK2 {
     private fun mapFunctionToKotlinElement(function: KtNamedFunction): KotlinElement.Function {
         val modifierList = function.modifierList
 
-        val isPrivate = modifierList?.hasModifier(KtTokens.PRIVATE_KEYWORD) ?: false
-        val isProtected = modifierList?.hasModifier(KtTokens.PROTECTED_KEYWORD) ?: false
-        val isPublic = !isPrivate && !isProtected
-        val isAbstract = modifierList?.hasModifier(KtTokens.ABSTRACT_KEYWORD) ?: false
         val isOverride = modifierList?.hasModifier(KtTokens.OVERRIDE_KEYWORD) ?: false
 
         // Check for Compose annotations
@@ -128,10 +137,10 @@ class KotlinElementParserK2 {
 
         return KotlinElement.Function(
             name = function.name ?: "",
-            isPrivate = isPrivate,
-            isPublic = isPublic,
-            isProtected = isProtected,
-            isAbstract = isAbstract,
+            isPrivate = function.isPrivate(),
+            isPublic = function.isPublic,
+            isProtected = function.isProtected(),
+            isAbstract = function.isAbstract(),
             isOverride = isOverride,
             isComposable = isComposable,
             isContentView = isContentView,
@@ -141,27 +150,28 @@ class KotlinElementParserK2 {
     }
 
     /**
-     * Maps a KtClass to a KotlinElement.ClassDeclaration
+     * Maps a KtClassOrObject to a KotlinElement.ClassDeclaration
      */
-    private fun mapClassToKotlinElement(ktClass: KtClass): KotlinElement.ClassDeclaration {
-        val isDataClass = ktClass.isData()
-        val isSealedClass = ktClass.modifierList?.hasModifier(KtTokens.SEALED_KEYWORD) ?: false
-        val isInnerClass = ktClass.modifierList?.hasModifier(KtTokens.INNER_KEYWORD) ?: false
+    private fun mapClassToKotlinElement(clazz: KtClassOrObject): KotlinElement.ClassDeclaration {
+        val isDataClass = clazz is KtClass && clazz.isData()
+        val isSealedClass = clazz is KtClass && clazz.modifierList?.hasModifier(KtTokens.SEALED_KEYWORD) ?: false
+        val isInnerClass = clazz.modifierList?.hasModifier(KtTokens.INNER_KEYWORD) ?: false
 
         return KotlinElement.ClassDeclaration(
-            name = ktClass.name ?: "",
+            name = clazz.name ?: "",
             isDataClass = isDataClass,
             isSealedClass = isSealedClass,
             isInnerClass = isInnerClass,
-            startOffset = ktClass.textRange.startOffset,
-            endOffset = ktClass.textRange.endOffset
+            startOffset = clazz.textRange.startOffset,
+            endOffset = clazz.textRange.endOffset
         )
     }
 
     /**
      * Maps a KtObjectDeclaration to a KotlinElement.CompanionObject if it's a companion object
+     * or to a KotlinElement.ClassDeclaration if it's a regular object
      */
-    private fun mapObjectToKotlinElement(objectDeclaration: KtObjectDeclaration): KotlinElement? {
+    private fun mapObjectToKotlinElement(objectDeclaration: KtObjectDeclaration): KotlinElement {
         return if (objectDeclaration.isCompanion()) {
             KotlinElement.CompanionObject(
                 name = objectDeclaration.name ?: "companion",
@@ -169,14 +179,22 @@ class KotlinElementParserK2 {
                 endOffset = objectDeclaration.textRange.endOffset
             )
         } else {
-            null // Skip non-companion objects
+            // Map non-companion objects to ClassDeclaration
+            KotlinElement.ClassDeclaration(
+                name = objectDeclaration.name ?: "",
+                isDataClass = false,
+                isSealedClass = false,
+                isInnerClass = false,
+                startOffset = objectDeclaration.textRange.startOffset,
+                endOffset = objectDeclaration.textRange.endOffset
+            )
         }
     }
 
     /**
-     * Maps a KtInitializerList to a KotlinElement.InitBlock
+     * Maps a KtClassInitializer to a KotlinElement.InitBlock
      */
-    private fun mapInitBlockToKotlinElement(initBlock: KtInitializerList): KotlinElement.InitBlock {
+    private fun mapInitBlockToKotlinElement(initBlock: KtClassInitializer): KotlinElement.InitBlock {
         return KotlinElement.InitBlock(
             startOffset = initBlock.textRange.startOffset,
             endOffset = initBlock.textRange.endOffset
