@@ -90,6 +90,7 @@ class KotlinElementSorter {
                 }
                 if (elementsInClass.isEmpty()) continue
 
+//                todo exception from inspection not execute on write thread. See if we can split or execute in backend. Test with large files.
                 // Sort the elements within the class
                 val sortedElements = elementsInClass.sortedWith(SortingRules.kotlinElementComparator)
 

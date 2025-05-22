@@ -20,6 +20,14 @@
                 instance="com.github.jcraane.kotlincodesorter.settings.SortingSettingsConfigurable"
                 id="com.github.jcraane.kotlincodesorter.settings.SortingSettingsConfigurable"
                 displayName="Kotlin Code Sorter"/>
+
+        <!-- Code Cleanup Integration -->
+        <localInspection language="kotlin"
+                         displayName="Sort Kotlin Code"
+                         groupName="Kotlin"
+                         enabledByDefault="false"
+                         level="INFORMATION"
+                         implementationClass="com.github.jcraane.kotlincodesorter.inspections.KotlinCodeSorterInspection"/>
     </extensions>
 
     <extensions defaultExtensionNs="org.jetbrains.kotlin">
