@@ -7,7 +7,7 @@ package com.github.jcraane.kotlincodesorter.settings
 enum class SortingRuleType(val displayName: String) {
     ABSTRACT_PROPERTY("abstract val/var"),
     PUBLIC_PROPERTY("public val/var"),
-    PRIVATE_PROPERTY("private val/var (viewModel at the top of the class)"),
+    PRIVATE_PROPERTY("private val/var"),
     COMPANION_OBJECT("companion object"),
     INIT_BLOCK("init"),
     OVERRIDE_FUNCTION("override fun"),
@@ -15,13 +15,13 @@ enum class SortingRuleType(val displayName: String) {
     PUBLIC_FUNCTION("public fun"),
     PROTECTED_FUNCTION("protected fun"),
     PRIVATE_FUNCTION("private fun"),
-    COMPOSABLE_FUNCTION("@Composable fun (ContentView() before the rest)"),
+    COMPOSABLE_FUNCTION("@Composable fun (ContentView() first)"),
     CLASS_DECLARATION("data class, sealed class, inner class");
 
     companion object {
         /**
          * Returns the default order of sorting rules.
          */
-        fun defaultOrder(): List<SortingRuleType> = values().toList()
+        fun defaultOrder(): List<SortingRuleType> = entries
     }
 }
