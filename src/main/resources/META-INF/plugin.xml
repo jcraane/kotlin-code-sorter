@@ -10,7 +10,6 @@
     <resource-bundle>messages.MyBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="com.github.jcraane.kotlincodesorter.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
         <postStartupActivity implementation="com.github.jcraane.kotlincodesorter.startup.MyProjectActivity" />
 
         <!-- Settings -->
