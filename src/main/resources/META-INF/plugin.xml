@@ -10,8 +10,6 @@
     <resource-bundle>messages.MyBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <postStartupActivity implementation="com.github.jcraane.kotlincodesorter.startup.MyProjectActivity" />
-
         <!-- Settings -->
         <applicationService serviceImplementation="com.github.jcraane.kotlincodesorter.settings.SortingSettingsState"/>
         <applicationConfigurable
