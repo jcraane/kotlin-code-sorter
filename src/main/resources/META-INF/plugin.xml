@@ -20,14 +20,13 @@
 
         <!-- Code Cleanup Integration -->
         <localInspection language="kotlin"
-                         enabledByDefault="false"
-                         level="INFORMATION"
+                         enabledByDefault="true"
+                         level="WEAK_WARNING"
                          implementationClass="com.github.jcraane.kotlincodesorter.inspections.KotlinCodeSorterInspection"
                          shortName="KotlinCodeSorter"
                          bundle="messages.MyBundle"
                          key="inspection.kotlin.code.sorter.display.name"
-                         groupKey="group.names.kotlin.issues"
-                         runForWholeFile="true"/>
+                         groupKey="group.names.kotlin.issues"/>
     </extensions>
 
     <extensions defaultExtensionNs="org.jetbrains.kotlin">
