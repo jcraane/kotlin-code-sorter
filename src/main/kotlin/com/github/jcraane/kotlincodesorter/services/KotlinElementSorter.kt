@@ -172,75 +172,6 @@ class KotlinElementSorter {
     }
 
     /**
-     * Sorts elements within each class in the file.
-     *
-     * @param project The current project
-     * @param file The Kotlin file
-     * @return True if the sorting was successful, false otherwise
-     */
-    @OptIn(KaAllowAnalysisOnEdt::class)
-    private fun sortClassElements(project: Project, file: PsiFile): Boolean {
-        val documentManager = PsiDocumentManager.getInstance(project)
-        val document = documentManager.getDocument(file) ?: return false
-
-        // Find all classes in the file
-        val ktFile = file as KtFile
-        val classes = ktFile.getChildrenOfType<KtClass>()
-        if (classes.isEmpty()) {
-            log.info("No classes found in file: ${file.name}")
-            // The file might contain top-level elements that can be sorted
-            val elements = allowAnalysisOnEdt {
-                parser.parse(file)
-            }
-            if (elements.isEmpty()) {
-                return false
-            }
-            val sortedElements = elements.sortedWith(SortingRules.kotlinElementComparator)
-            return applySort(project, file, sortedElements)
-        }
-
-        var success = true
-
-        // Sort elements within each class
-        try {
-            for (ktClass in classes) {
-                val classBody = ktClass.findDescendantOfType<KtClassBody>() ?: continue
-                val classBodyRange = classBody.textRange
-
-                // Only parse elements within this class body
-                val elementsInClass = allowAnalysisOnEdt {
-                    parser.parse(ktClass)
-                }
-                if (elementsInClass.isEmpty()) continue
-
-//                todo exception from inspection not execute on write thread. See if we can split or execute in backend. Test with large files.
-                // Sort the elements within the class
-                val sortedElements = elementsInClass.sortedWith(SortingRules.kotlinElementComparator)
-
-                WriteCommandAction.runWriteCommandAction(project) {
-                    // Create the sorted content for the class body
-                    val newClassBodyContent = constructSortedClassBodyContent(document, sortedElements, classBody)
-
-                    // Replace the class body content
-                    document.replaceString(
-                        classBody.textRange.startOffset + 1, // +1 to skip the opening brace
-                        classBody.textRange.endOffset - 1,   // -1 to skip the closing brace
-                        newClassBodyContent
-                    )
-                }
-            }
-
-            // Commit the document changes
-            documentManager.commitDocument(document)
-        } catch (e: Exception) {
-            log.error("Error applying sort to classes", e)
-            success = false
-        }
-
-        return success
-    }
-
-    /**
      * Constructs the sorted content for a class body.
      *
      * @param document The document
@@ -254,7 +185,6 @@ class KotlinElementSorter {
         classBody: KtClassBody,
     ): String {
         val sb = StringBuilder()
-        val classBodyStart = classBody.textRange.startOffset + 1 // +1 to skip the opening brace
 
         // Extract the original text of each element
         for (element in sortedElements) {
@@ -272,7 +202,6 @@ class KotlinElementSorter {
             sb.append(elementText)
         }
 
-        // Close with a newline
         sb.append("\n")
 
         return sb.toString()
