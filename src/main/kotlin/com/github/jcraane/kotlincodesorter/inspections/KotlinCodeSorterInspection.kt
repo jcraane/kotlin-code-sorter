@@ -7,9 +7,12 @@ import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.codeInspection.ProblemsHolder
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiFile
+import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
+import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
 import org.jetbrains.kotlin.psi.KtFile
 
 /**
@@ -45,7 +48,7 @@ class KotlinCodeSorterInspection : LocalInspectionTool(), CleanupLocalInspection
                 holder.registerProblem(
                     file,
                     "Kotlin code can be sorted",
-                    ProblemHighlightType.INFORMATION,
+                    ProblemHighlightType.WEAK_WARNING,
                     SortKotlinCodeQuickFix()
                 )
 
@@ -62,9 +65,15 @@ class KotlinCodeSorterInspection : LocalInspectionTool(), CleanupLocalInspection
 
         override fun getFamilyName(): String = "Kotlin"
 
+        @OptIn(KaAllowAnalysisOnEdt::class)
         override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
             val file = descriptor.psiElement as? KtFile ?: return
-            sorter.sortFile(project, file)
+            println("SKJDKSDJSD")
+            ApplicationManager.getApplication().runReadAction {
+                allowAnalysisOnEdt {
+                    sorter.sortFile(project, file)
+                }
+            }
         }
     }
 }

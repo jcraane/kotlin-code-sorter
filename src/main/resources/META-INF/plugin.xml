@@ -20,15 +20,18 @@
 
         <!-- Code Cleanup Integration -->
         <localInspection language="kotlin"
-                         displayName="Sort Kotlin Code"
-                         groupName="Kotlin"
                          enabledByDefault="false"
                          level="INFORMATION"
-                         implementationClass="com.github.jcraane.kotlincodesorter.inspections.KotlinCodeSorterInspection"/>
+                         implementationClass="com.github.jcraane.kotlincodesorter.inspections.KotlinCodeSorterInspection"
+                         shortName="KotlinCodeSorter"
+                         bundle="messages.MyBundle"
+                         key="inspection.kotlin.code.sorter.display.name"
+                         groupKey="group.names.kotlin.issues"
+                         runForWholeFile="true"/>
     </extensions>
 
     <extensions defaultExtensionNs="org.jetbrains.kotlin">
-        <supportsKotlinPluginMode supportsK2="true" />
+        <supportsKotlinPluginMode supportsK2="true"/>
     </extensions>
 
     <actions>

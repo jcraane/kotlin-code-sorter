@@ -5,7 +5,14 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.psi.PsiFile
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.lexer.KtTokens
-import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.KtClass
+import org.jetbrains.kotlin.psi.KtClassInitializer
+import org.jetbrains.kotlin.psi.KtClassOrObject
+import org.jetbrains.kotlin.psi.KtDeclaration
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtObjectDeclaration
+import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.psiUtil.containingClass
 
 /**
@@ -51,7 +58,6 @@ class KotlinElementParser(private val mapper: KotlinElementMapper = KotlinElemen
      */
     private fun parseDeclarationsRecursively(declarations: List<KtDeclaration>): List<KotlinElement> {
         val elements = mutableListOf<KotlinElement>()
-
         declarations.forEach { declaration ->
             val element = when (declaration) {
                 is KtProperty -> mapper.mapToKotlinElement(declaration)
@@ -59,9 +65,11 @@ class KotlinElementParser(private val mapper: KotlinElementMapper = KotlinElemen
                 is KtClass -> mapper.mapToKotlinElement(declaration)
                 is KtObjectDeclaration -> {
                     val containingClass = declaration.containingClass()
-                    val isInsideSealedClass = containingClass?.modifierList?.hasModifier(KtTokens.SEALED_KEYWORD) ?: false
+                    val isInsideSealedClass =
+                        containingClass?.modifierList?.hasModifier(KtTokens.SEALED_KEYWORD) ?: false
                     if (!isInsideSealedClass) mapper.mapToKotlinElement(declaration) else null
                 }
+
                 is KtClassInitializer -> mapper.mapToKotlinElement(declaration)
                 else -> null // Skip unsupported declarations
             }
