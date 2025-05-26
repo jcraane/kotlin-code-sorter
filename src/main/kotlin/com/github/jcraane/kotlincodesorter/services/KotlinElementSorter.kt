@@ -140,15 +140,27 @@ class KotlinElementSorter {
         val document = documentManager.getDocument(file) ?: return false
 
         try {
-            if (sortingData.topLevelElements.isNotEmpty()) {
-                return applyTopLevelSort(project, file, sortingData.topLevelElements)
+            WriteCommandAction.runWriteCommandAction(project) {
+                try {
+                    // Apply top-level sorting if needed
+                    if (sortingData.topLevelElements.isNotEmpty()) {
+                        applySortToElements(document, sortingData.topLevelElements)
+                    }
+
+                    // Apply class sorting if needed
+                    if (sortingData.classData.isNotEmpty()) {
+                        for (classData in sortingData.classData) {
+                            applySortToClassBody(document, classData)
+                        }
+                    }
+
+                    documentManager.commitDocument(document)
+                } catch (e: Exception) {
+                    log.error("Error applying sort", e)
+                }
             }
 
-            if (sortingData.classData.isNotEmpty()) {
-                return applyClassSort(project, document, documentManager, sortingData.classData)
-            }
-
-            return false
+            return true
         } catch (e: Exception) {
             log.error("Error applying sorting to file: ${file.name}", e)
             return false
@@ -156,54 +168,76 @@ class KotlinElementSorter {
     }
 
     /**
-     * Applies sorting to class elements.
+     * Applies sorting to class body elements.
      */
-    private fun applyClassSort(
-        project: Project,
-        document: Document,
-        documentManager: PsiDocumentManager,
-        classData: List<ClassSortingData>
-    ): Boolean {
-        var success = true
+    private fun applySortToClassBody(document: Document, classData: ClassSortingData) {
+        val elementTexts = getElementTexts(document, classData.elements)
+        val newContent = buildClassBodyContent(classData.elements, elementTexts)
 
-        WriteCommandAction.runWriteCommandAction(project) {
-            try {
-                for (classData in classData) {
-                    val newClassBodyContent = constructSortedClassBodyContent(
-                        document,
-                        classData.elements,
-                    )
-
-                    document.replaceString(
-                        classData.classBody.textRange.startOffset + 1, // +1 to skip the opening brace
-                        classData.classBody.textRange.endOffset - 1,   // -1 to skip the closing brace
-                        newClassBodyContent
-                    )
-                }
-
-                documentManager.commitDocument(document)
-            } catch (e: Exception) {
-                log.error("Error applying sort to classes", e)
-                success = false
-            }
-        }
-
-        return success
+        // Replace the content within the class body, excluding braces
+        document.replaceString(
+            classData.classBody.textRange.startOffset + 1, // +1 to skip the opening brace
+            classData.classBody.textRange.endOffset - 1,   // -1 to skip the closing brace
+            newContent
+        )
     }
 
     /**
-     * Constructs the sorted content for a class body.
+     * Applies sorting to a list of elements.
      */
-    private fun constructSortedClassBodyContent(
-        document: Document,
-        sortedElements: List<KotlinElement>,
+    private fun applySortToElements(document: Document, elements: List<KotlinElement>) {
+        if (elements.isEmpty()) return
+
+        val elementTexts = getElementTexts(document, elements)
+
+        val startOffset = elements.minByOrNull { it.startOffset }?.startOffset ?: return
+        val endOffset = elements.maxByOrNull { it.endOffset }?.endOffset ?: return
+
+        val newContent = buildTopLevelContent(elements, elementTexts)
+
+        document.replaceString(startOffset, endOffset, newContent)
+    }
+
+    /**
+     * Gets the text of each element from the document.
+     */
+    private fun getElementTexts(document: Document, elements: List<KotlinElement>): Map<KotlinElement, String> {
+        return elements.associateWith { element ->
+            document.getText(TextRange(element.startOffset, element.endOffset))
+        }
+    }
+
+    /**
+     * Builds the content string with sorted elements for top-level content.
+     */
+    private fun buildTopLevelContent(
+        elements: List<KotlinElement>,
+        elementTexts: Map<KotlinElement, String>
+    ): String {
+        val newContent = StringBuilder()
+
+        for (element in elements) {
+            newContent.append(elementTexts[element] ?: "")
+
+            if (element != elements.last()) {
+                newContent.append("\n")
+            }
+        }
+
+        return newContent.toString()
+    }
+
+    /**
+     * Builds the content string with sorted elements for class body content.
+     */
+    private fun buildClassBodyContent(
+        elements: List<KotlinElement>,
+        elementTexts: Map<KotlinElement, String>
     ): String {
         val sb = StringBuilder()
 
-        for (element in sortedElements) {
-            val elementText = document.getText(
-                TextRange(element.startOffset, element.endOffset)
-            )
+        for (element in elements) {
+            val elementText = elementTexts[element] ?: continue
 
             if (sb.isNotEmpty()) {
                 sb.append("\n\n    ")
@@ -216,65 +250,5 @@ class KotlinElementSorter {
 
         sb.append("\n")
         return sb.toString()
-    }
-
-    /**
-     * Applies the sorted elements to the file at top level.
-     */
-    private fun applyTopLevelSort(project: Project, file: PsiFile, sortedElements: List<KotlinElement>): Boolean {
-        val documentManager = PsiDocumentManager.getInstance(project)
-        val document = documentManager.getDocument(file) ?: return false
-
-        WriteCommandAction.runWriteCommandAction(project) {
-            try {
-                val elementTexts = getElementTexts(document, sortedElements)
-
-                val startOffset = sortedElements.minByOrNull { it.startOffset }?.startOffset ?: return@runWriteCommandAction
-                val endOffset = sortedElements.maxByOrNull { it.endOffset }?.endOffset ?: return@runWriteCommandAction
-
-                val newContent = buildSortedContent(sortedElements, elementTexts)
-
-                document.replaceString(startOffset, endOffset, newContent)
-                documentManager.commitDocument(document)
-            } catch (e: Exception) {
-                log.error("Error applying sort", e)
-            }
-        }
-
-        return true
-    }
-
-    /**
-     * Gets the text of each element from the document.
-     */
-    private fun getElementTexts(document: Document, elements: List<KotlinElement>): Map<KotlinElement, String> {
-        val elementTexts = mutableMapOf<KotlinElement, String>()
-
-        for (element in elements) {
-            val text = document.getText(TextRange(element.startOffset, element.endOffset))
-            elementTexts[element] = text
-        }
-
-        return elementTexts
-    }
-
-    /**
-     * Builds the content string with sorted elements.
-     */
-    private fun buildSortedContent(
-        sortedElements: List<KotlinElement>,
-        elementTexts: Map<KotlinElement, String>
-    ): String {
-        val newContent = StringBuilder()
-
-        for (element in sortedElements) {
-            newContent.append(elementTexts[element] ?: "")
-
-            if (element != sortedElements.last()) {
-                newContent.append("\n")
-            }
-        }
-
-        return newContent.toString()
     }
 }
