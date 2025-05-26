@@ -8,6 +8,7 @@ import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
@@ -23,8 +24,32 @@ import org.jetbrains.kotlin.psi.psiUtil.getChildrenOfType
  */
 class KotlinElementSorter {
     private val log = logger<KotlinElementSorter>()
-
     private val parser = KotlinElementParser()
+
+    /**
+     * Sorts the elements in a Kotlin file according to the defined rules.
+     * This method is kept for backward compatibility and uses the prepareSortingData/applySorting methods.
+     *
+     * @param project The current project
+     * @param file The Kotlin file to sort
+     * @return True if the sorting was successful, false otherwise
+     */
+    fun sortFile(project: Project, file: PsiFile): Boolean {
+        log.info("Sorting file: ${file.name}")
+
+        if (file !is KtFile) {
+            log.warn("File is not a Kotlin file: ${file.name}")
+            return false
+        }
+
+        try {
+            val sortingData = prepareSortingData(project, file)
+            return applySorting(project, file, sortingData)
+        } catch (e: Exception) {
+            log.error("Error sorting file: ${file.name}", e)
+            return false
+        }
+    }
 
     /**
      * Prepares sorting data for a Kotlin file by analyzing its structure and elements.
@@ -43,36 +68,51 @@ class KotlinElementSorter {
             return SortingData()
         }
 
-        // Find all classes in the file
-        val classes = file.getChildrenOfType<KtClass>()
+        val classes = file.getChildrenOfType<KtClass>().toList()
 
-        // If there are no classes, collect top-level elements
-        if (classes.isEmpty()) {
-            log.info("No classes found in file: ${file.name}")
-            val elements = allowAnalysisOnEdt {
-                parser.parse(file)
-            }
-            if (elements.isEmpty()) {
-                return SortingData()
-            }
-            val sortedElements = elements.sortedWith(SortingRules.kotlinElementComparator)
-            return SortingData(topLevelElements = sortedElements)
+        return if (classes.isEmpty()) {
+            prepareTopLevelElementsSortingData(file)
+        } else {
+            prepareClassSortingData(classes)
+        }
+    }
+
+    /**
+     * Prepares sorting data for top-level elements in a file.
+     */
+    @OptIn(KaAllowAnalysisOnEdt::class)
+    private fun prepareTopLevelElementsSortingData(file: KtFile): SortingData {
+        log.info("No classes found in file: ${file.name}")
+
+        val elements = allowAnalysisOnEdt {
+            parser.parse(file)
         }
 
-        // Collect data for each class
+        if (elements.isEmpty()) {
+            return SortingData()
+        }
+
+        val sortedElements = elements.sortedWith(SortingRules.kotlinElementComparator)
+        return SortingData(topLevelElements = sortedElements)
+    }
+
+    /**
+     * Prepares sorting data for classes in a file.
+     */
+    @OptIn(KaAllowAnalysisOnEdt::class)
+    private fun prepareClassSortingData(classes: List<KtClass>): SortingData {
         val classDataList = mutableListOf<ClassSortingData>()
+
         for (ktClass in classes) {
             val classBody = ktClass.findDescendantOfType<KtClassBody>() ?: continue
 
-            // Parse elements within this class body
             val elementsInClass = allowAnalysisOnEdt {
                 parser.parse(ktClass)
             }
+
             if (elementsInClass.isEmpty()) continue
 
-            // Sort the elements within the class
             val sortedElements = elementsInClass.sortedWith(SortingRules.kotlinElementComparator)
-
             classDataList.add(ClassSortingData(ktClass, classBody, sortedElements))
         }
 
@@ -100,42 +140,12 @@ class KotlinElementSorter {
         val document = documentManager.getDocument(file) ?: return false
 
         try {
-            // Handle top-level elements
             if (sortingData.topLevelElements.isNotEmpty()) {
-                return applySort(project, file, sortingData.topLevelElements)
+                return applyTopLevelSort(project, file, sortingData.topLevelElements)
             }
 
-            // Handle class elements
             if (sortingData.classData.isNotEmpty()) {
-                var success = true
-
-                WriteCommandAction.runWriteCommandAction(project) {
-                    try {
-                        for (classData in sortingData.classData) {
-                            // Create the sorted content for the class body
-                            val newClassBodyContent = constructSortedClassBodyContent(
-                                document,
-                                classData.elements,
-                                classData.classBody
-                            )
-
-                            // Replace the class body content
-                            document.replaceString(
-                                classData.classBody.textRange.startOffset + 1, // +1 to skip the opening brace
-                                classData.classBody.textRange.endOffset - 1,   // -1 to skip the closing brace
-                                newClassBodyContent
-                            )
-                        }
-
-                        // Commit the document changes
-                        documentManager.commitDocument(document)
-                    } catch (e: Exception) {
-                        log.error("Error applying sort to classes", e)
-                        success = false
-                    }
-                }
-
-                return success
+                return applyClassSort(project, document, documentManager, sortingData.classData)
             }
 
             return false
@@ -146,53 +156,55 @@ class KotlinElementSorter {
     }
 
     /**
-     * Sorts the elements in a Kotlin file according to the defined rules.
-     * This method is kept for backward compatibility and uses the new prepareSortingData/applySorting methods.
-     *
-     * @param project The current project
-     * @param file The Kotlin file to sort
-     * @return True if the sorting was successful, false otherwise
+     * Applies sorting to class elements.
      */
-    fun sortFile(project: Project, file: PsiFile): Boolean {
-        log.info("Sorting file: ${file.name}")
+    private fun applyClassSort(
+        project: Project,
+        document: Document,
+        documentManager: PsiDocumentManager,
+        classData: List<ClassSortingData>
+    ): Boolean {
+        var success = true
 
-        try {
-            if (file !is KtFile) {
-                log.warn("File is not a Kotlin file: ${file.name}")
-                return false
+        WriteCommandAction.runWriteCommandAction(project) {
+            try {
+                for (classData in classData) {
+                    val newClassBodyContent = constructSortedClassBodyContent(
+                        document,
+                        classData.elements,
+                    )
+
+                    document.replaceString(
+                        classData.classBody.textRange.startOffset + 1, // +1 to skip the opening brace
+                        classData.classBody.textRange.endOffset - 1,   // -1 to skip the closing brace
+                        newClassBodyContent
+                    )
+                }
+
+                documentManager.commitDocument(document)
+            } catch (e: Exception) {
+                log.error("Error applying sort to classes", e)
+                success = false
             }
-
-            // Use the new methods to separate read and write operations
-            val sortingData = prepareSortingData(project, file)
-            return applySorting(project, file, sortingData)
-        } catch (e: Exception) {
-            log.error("Error sorting file: ${file.name}", e)
-            return false
         }
+
+        return success
     }
 
     /**
      * Constructs the sorted content for a class body.
-     *
-     * @param document The document
-     * @param sortedElements The sorted elements
-     * @param classBody The class body
-     * @return The sorted class body content
      */
     private fun constructSortedClassBodyContent(
         document: Document,
         sortedElements: List<KotlinElement>,
-        classBody: KtClassBody,
     ): String {
         val sb = StringBuilder()
 
-        // Extract the original text of each element
         for (element in sortedElements) {
             val elementText = document.getText(
-                com.intellij.openapi.util.TextRange(element.startOffset, element.endOffset)
+                TextRange(element.startOffset, element.endOffset)
             )
 
-            // Add leading whitespace for proper indentation
             if (sb.isNotEmpty()) {
                 sb.append("\n\n    ")
             } else {
@@ -203,53 +215,26 @@ class KotlinElementSorter {
         }
 
         sb.append("\n")
-
         return sb.toString()
     }
 
     /**
-     * Applies the sorted elements to the file.
-     *
-     * @param project The current project
-     * @param file The file to modify
-     * @param sortedElements The sorted elements to apply
-     * @return True if the operation was successful, false otherwise
+     * Applies the sorted elements to the file at top level.
      */
-    private fun applySort(project: Project, file: PsiFile, sortedElements: List<KotlinElement>): Boolean {
+    private fun applyTopLevelSort(project: Project, file: PsiFile, sortedElements: List<KotlinElement>): Boolean {
         val documentManager = PsiDocumentManager.getInstance(project)
         val document = documentManager.getDocument(file) ?: return false
 
-        // Ensure all changes are made in a single command
         WriteCommandAction.runWriteCommandAction(project) {
             try {
-                // Get the original text of all elements
-                val elementTexts = mutableMapOf<KotlinElement, String>()
-                for (element in sortedElements) {
-                    val text = document.getText(
-                        com.intellij.openapi.util.TextRange(element.startOffset, element.endOffset)
-                    )
-                    elementTexts[element] = text
-                }
+                val elementTexts = getElementTexts(document, sortedElements)
 
-                // Find the start and end of the content we're sorting
-                val startOffset =
-                    sortedElements.minByOrNull { it.startOffset }?.startOffset ?: return@runWriteCommandAction
+                val startOffset = sortedElements.minByOrNull { it.startOffset }?.startOffset ?: return@runWriteCommandAction
                 val endOffset = sortedElements.maxByOrNull { it.endOffset }?.endOffset ?: return@runWriteCommandAction
 
-                // Build the new content with sorted elements
-                val newContent = StringBuilder()
-                for (element in sortedElements) {
-                    newContent.append(elementTexts[element] ?: "")
-                    // Add a newline between elements if needed
-                    if (element != sortedElements.last()) {
-                        newContent.append("\n")
-                    }
-                }
+                val newContent = buildSortedContent(sortedElements, elementTexts)
 
-                // Replace the entire content with the sorted content
-                document.replaceString(startOffset, endOffset, newContent.toString())
-
-                // Commit the document changes
+                document.replaceString(startOffset, endOffset, newContent)
                 documentManager.commitDocument(document)
             } catch (e: Exception) {
                 log.error("Error applying sort", e)
@@ -257,5 +242,39 @@ class KotlinElementSorter {
         }
 
         return true
+    }
+
+    /**
+     * Gets the text of each element from the document.
+     */
+    private fun getElementTexts(document: Document, elements: List<KotlinElement>): Map<KotlinElement, String> {
+        val elementTexts = mutableMapOf<KotlinElement, String>()
+
+        for (element in elements) {
+            val text = document.getText(TextRange(element.startOffset, element.endOffset))
+            elementTexts[element] = text
+        }
+
+        return elementTexts
+    }
+
+    /**
+     * Builds the content string with sorted elements.
+     */
+    private fun buildSortedContent(
+        sortedElements: List<KotlinElement>,
+        elementTexts: Map<KotlinElement, String>
+    ): String {
+        val newContent = StringBuilder()
+
+        for (element in sortedElements) {
+            newContent.append(elementTexts[element] ?: "")
+
+            if (element != sortedElements.last()) {
+                newContent.append("\n")
+            }
+        }
+
+        return newContent.toString()
     }
 }
