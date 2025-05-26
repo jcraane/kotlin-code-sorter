@@ -1,5 +1,6 @@
 package com.github.jcraane.kotlincodesorter.inspections
 
+import com.github.jcraane.kotlincodesorter.model.SortingData
 import com.github.jcraane.kotlincodesorter.services.KotlinElementSorter
 import com.intellij.codeInspection.CleanupLocalInspectionTool
 import com.intellij.codeInspection.LocalInspectionTool
@@ -7,13 +8,17 @@ import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.codeInspection.ProblemsHolder
-import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiFile
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
 import org.jetbrains.kotlin.psi.KtFile
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Inspection tool that integrates Kotlin code sorting with IntelliJ's code cleanup feature.
@@ -28,6 +33,8 @@ import org.jetbrains.kotlin.psi.KtFile
  */
 class KotlinCodeSorterInspection : LocalInspectionTool(), CleanupLocalInspectionTool {
     private val sorter = KotlinElementSorter()
+
+    private val backgroundExecutor = Executors.newSingleThreadExecutor()
 
     override fun getDisplayName(): String = "Sort Kotlin Code"
 
@@ -68,12 +75,24 @@ class KotlinCodeSorterInspection : LocalInspectionTool(), CleanupLocalInspection
         @OptIn(KaAllowAnalysisOnEdt::class)
         override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
             val file = descriptor.psiElement as? KtFile ?: return
-            println("SKJDKSDJSD")
-            ApplicationManager.getApplication().runReadAction {
+
+            // Create a holder for the sorting data
+            val sortingDataRef = AtomicReference<SortingData>()
+
+            // First, compute the sorting data completely outside of the write action using a background task with ReadAction
+            ReadAction.nonBlocking<SortingData> {
                 allowAnalysisOnEdt {
-                    sorter.sortFile(project, file)
+                    sorter.prepareSortingData(project, file)
                 }
             }
+                .finishOnUiThread(ModalityState.defaultModalityState()) { sortingData ->
+                    // Only after we have the data, execute the write action to apply the changes
+                    sortingDataRef.set(sortingData)
+                    WriteCommandAction.runWriteCommandAction(project) {
+                        sorter.applySorting(project, file, sortingDataRef.get())
+                    }
+                }
+                .submit(backgroundExecutor)
         }
     }
 }

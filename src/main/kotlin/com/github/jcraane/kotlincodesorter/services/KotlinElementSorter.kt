@@ -1,6 +1,8 @@
 package com.github.jcraane.kotlincodesorter.services
 
+import com.github.jcraane.kotlincodesorter.model.ClassSortingData
 import com.github.jcraane.kotlincodesorter.model.KotlinElement
+import com.github.jcraane.kotlincodesorter.model.SortingData
 import com.github.jcraane.kotlincodesorter.model.SortingRules
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.diagnostic.logger
@@ -25,7 +27,127 @@ class KotlinElementSorter {
     private val parser = KotlinElementParser()
 
     /**
+     * Prepares sorting data for a Kotlin file by analyzing its structure and elements.
+     * This method performs only read operations and does not modify the file.
+     *
+     * @param project The current project
+     * @param file The Kotlin file to analyze
+     * @return SortingData containing all information needed for sorting
+     */
+    @OptIn(KaAllowAnalysisOnEdt::class)
+    fun prepareSortingData(project: Project, file: PsiFile): SortingData {
+        log.info("Preparing sorting data for file: ${file.name}")
+
+        if (file !is KtFile) {
+            log.warn("File is not a Kotlin file: ${file.name}")
+            return SortingData()
+        }
+
+        // Find all classes in the file
+        val classes = file.getChildrenOfType<KtClass>()
+
+        // If there are no classes, collect top-level elements
+        if (classes.isEmpty()) {
+            log.info("No classes found in file: ${file.name}")
+            val elements = allowAnalysisOnEdt {
+                parser.parse(file)
+            }
+            if (elements.isEmpty()) {
+                return SortingData()
+            }
+            val sortedElements = elements.sortedWith(SortingRules.kotlinElementComparator)
+            return SortingData(topLevelElements = sortedElements)
+        }
+
+        // Collect data for each class
+        val classDataList = mutableListOf<ClassSortingData>()
+        for (ktClass in classes) {
+            val classBody = ktClass.findDescendantOfType<KtClassBody>() ?: continue
+
+            // Parse elements within this class body
+            val elementsInClass = allowAnalysisOnEdt {
+                parser.parse(ktClass)
+            }
+            if (elementsInClass.isEmpty()) continue
+
+            // Sort the elements within the class
+            val sortedElements = elementsInClass.sortedWith(SortingRules.kotlinElementComparator)
+
+            classDataList.add(ClassSortingData(ktClass, classBody, sortedElements))
+        }
+
+        return SortingData(classData = classDataList)
+    }
+
+    /**
+     * Applies sorting to a Kotlin file using the provided sorting data.
+     * This method performs write operations to modify the file.
+     *
+     * @param project The current project
+     * @param file The Kotlin file to modify
+     * @param sortingData The sorting data to apply
+     * @return True if the sorting was successful, false otherwise
+     */
+    fun applySorting(project: Project, file: PsiFile, sortingData: SortingData): Boolean {
+        log.info("Applying sorting to file: ${file.name}")
+
+        if (file !is KtFile) {
+            log.warn("File is not a Kotlin file: ${file.name}")
+            return false
+        }
+
+        val documentManager = PsiDocumentManager.getInstance(project)
+        val document = documentManager.getDocument(file) ?: return false
+
+        try {
+            // Handle top-level elements
+            if (sortingData.topLevelElements.isNotEmpty()) {
+                return applySort(project, file, sortingData.topLevelElements)
+            }
+
+            // Handle class elements
+            if (sortingData.classData.isNotEmpty()) {
+                var success = true
+
+                WriteCommandAction.runWriteCommandAction(project) {
+                    try {
+                        for (classData in sortingData.classData) {
+                            // Create the sorted content for the class body
+                            val newClassBodyContent = constructSortedClassBodyContent(
+                                document,
+                                classData.elements,
+                                classData.classBody
+                            )
+
+                            // Replace the class body content
+                            document.replaceString(
+                                classData.classBody.textRange.startOffset + 1, // +1 to skip the opening brace
+                                classData.classBody.textRange.endOffset - 1,   // -1 to skip the closing brace
+                                newClassBodyContent
+                            )
+                        }
+
+                        // Commit the document changes
+                        documentManager.commitDocument(document)
+                    } catch (e: Exception) {
+                        log.error("Error applying sort to classes", e)
+                        success = false
+                    }
+                }
+
+                return success
+            }
+
+            return false
+        } catch (e: Exception) {
+            log.error("Error applying sorting to file: ${file.name}", e)
+            return false
+        }
+    }
+
+    /**
      * Sorts the elements in a Kotlin file according to the defined rules.
+     * This method is kept for backward compatibility and uses the new prepareSortingData/applySorting methods.
      *
      * @param project The current project
      * @param file The Kotlin file to sort
@@ -40,8 +162,9 @@ class KotlinElementSorter {
                 return false
             }
 
-            // Sort elements inside each class in the file
-            return sortClassElements(project, file)
+            // Use the new methods to separate read and write operations
+            val sortingData = prepareSortingData(project, file)
+            return applySorting(project, file, sortingData)
         } catch (e: Exception) {
             log.error("Error sorting file: ${file.name}", e)
             return false
